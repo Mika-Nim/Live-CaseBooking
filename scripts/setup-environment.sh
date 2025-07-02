@@ -24,9 +24,10 @@ fi
 echo ""
 echo "📋 Next steps:"
 if [ "$ENVIRONMENT" = "development" ]; then
-    echo "1. Create development branch in Supabase dashboard"
-    echo "2. Update .env.development with development branch credentials"
-    echo "3. Run: npm start"
+    echo "1. Create new Supabase project called 'TM-Case-Booking-Dev'"
+    echo "2. Run database-schema.sql and database-seed.sql in the dev project"
+    echo "3. Update .env.development with dev project credentials"
+    echo "4. Run: npm start"
 elif [ "$ENVIRONMENT" = "production" ]; then
     echo "1. Run: npm run build"
     echo "2. Deploy to GitHub Pages"

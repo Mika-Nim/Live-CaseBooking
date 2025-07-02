@@ -4,49 +4,57 @@ This document explains how to set up separate development and production environ
 
 ## Architecture Overview
 
-- **Production**: `Live-CaseBooking` repository → Main Supabase branch
-- **Development**: `TM-Case-Booking` repository → Development Supabase branch
+- **Production**: `Live-CaseBooking` repository → Production Supabase project
+- **Development**: `TM-Case-Booking` repository → Development Supabase project
+
+> **Note**: This setup uses separate Supabase projects instead of branching (which requires Pro plan). This approach works perfectly with the free tier.
 
 ## Prerequisites
 
-1. Supabase Pro Plan (required for branching)
-2. GitHub repositories set up
-3. Supabase CLI installed: `npm install -g supabase`
+1. Two GitHub repositories set up
+2. Supabase account (free tier compatible)
+3. Optional: Supabase CLI installed: `npm install -g supabase`
 
-## Setting Up Supabase Branching
+## Setting Up Separate Supabase Projects
 
-### Step 1: Enable GitHub Integration
+### Quick Setup (Recommended)
 
-1. Go to your Supabase dashboard: https://supabase.com/dashboard/project/yjllfmmzgnapsqfddbwt
-2. Navigate to **Settings** → **Integrations**
-3. Install and configure **GitHub Integration**
-4. Connect your production repository: `Mika-Nim/Live-CaseBooking`
-5. Set the production branch to `main`
+Run the automated setup script:
 
-### Step 2: Create Development Branch
+```bash
+./scripts/setup-dev-project.sh
+```
 
-1. In your `TM-Case-Booking` repository, create a new branch:
-   ```bash
-   git checkout -b development
-   git push -u origin development
-   ```
+This script will guide you through creating the development project and updating your environment configuration.
 
-2. In Supabase dashboard:
-   - Go to **Branches** tab
-   - Click **"Create preview branch"**
-   - Select repository: `TM-Case-Booking`
-   - Select branch: `development`
-   - Enter branch name: `dev-testing`
+### Manual Setup
+
+### Step 1: Create Development Supabase Project
+
+1. Go to your Supabase dashboard: https://supabase.com/dashboard
+2. Click **"New Project"**
+3. Fill in details:
+   - Name: `TM-Case-Booking-Dev`
+   - Database Password: Use a strong password
+   - Region: Same as your production project
+   - Plan: Free
+4. Click **"Create new project"**
+
+### Step 2: Set Up Development Database
+
+1. In your new development project dashboard:
+   - Navigate to **SQL Editor**
+   - Copy and run the contents of `database-schema.sql`
+   - Copy and run the contents of `database-seed.sql`
 
 ### Step 3: Update Environment Configuration
 
-Once the development branch is created, you'll get new credentials:
-
-1. Copy the development branch URL and anon key
-2. Update `.env.development`:
+1. In your development project, go to **Settings** → **API**
+2. Copy the Project URL and anon key
+3. Update `.env.development`:
    ```env
-   REACT_APP_SUPABASE_URL=https://your-project-ref-dev-branch.supabase.co
-   REACT_APP_SUPABASE_ANON_KEY=your-dev-branch-anon-key
+   REACT_APP_SUPABASE_URL=https://your-actual-dev-project.supabase.co
+   REACT_APP_SUPABASE_ANON_KEY=your-actual-dev-anon-key
    ```
 
 ## Repository Setup
@@ -104,25 +112,25 @@ Use the setup script to quickly switch between environments:
 
 | Variable | Development | Production |
 |----------|-------------|------------|
-| `REACT_APP_SUPABASE_URL` | Dev branch URL | Main branch URL |
-| `REACT_APP_SUPABASE_ANON_KEY` | Dev branch key | Main branch key |
+| `REACT_APP_SUPABASE_URL` | Dev project URL | Production project URL |
+| `REACT_APP_SUPABASE_ANON_KEY` | Dev project key | Production project key |
 | `REACT_APP_ENV` | development | production |
 
 ## Database Management
 
 ### Development Database
 
-- Automatically synced with your development branch
-- Includes all migrations and seed data
+- Separate Supabase project for development
+- Includes all schema and seed data
 - Safe for testing and experimentation
-- Auto-pauses after 5 minutes of inactivity
+- Free tier limits apply
 
 ### Production Database
 
-- Connected to main Supabase branch
+- Main Supabase project for production
 - Contains live user data
 - Protected by RLS policies
-- Always active
+- Free tier limits apply
 
 ## Workflow
 
