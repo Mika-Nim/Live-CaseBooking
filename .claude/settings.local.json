@@ -64,7 +64,17 @@
       "Bash(node:*)",
       "Bash(npm run typecheck:*)",
       "Bash(npm run build:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npx gh-pages:*)",
+      "WebFetch(domain:supabase.com)",
+      "Bash(npx supabase:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(chmod:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(./scripts/setup-environment.sh:*)",
+      "Bash(curl:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }
