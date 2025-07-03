@@ -1,17 +1,17 @@
-# TM Case Booking System - Production Environment
+# TM Case Booking System - Development Environment
 
 A comprehensive React-based case booking application for medical procedures with role-based access control, status workflow management, and Supabase integration.
 
 ## 🏥 Overview
 
-This is the **Production Environment** for the TM Case Booking System. This version is live and serves real users with production-grade data and security.
+This is the **Development Environment** for the TM Case Booking System. It uses a separate Supabase database from the production environment to ensure safe testing and development.
 
 ### 🌐 Environment Information
-- **Environment**: Production
-- **Live URL**: https://mika-nim.github.io/Live-CaseBooking/
-- **Database**: Supabase Production Instance
-- **Branch**: `main`
-- **Repository**: https://github.com/Mika-Nim/Live-CaseBooking
+- **Environment**: Development
+- **Database**: Supabase Development Instance
+- **Branch**: `development`
+- **Local URL**: http://localhost:3000
+- **Repository**: https://github.com/Mika-Nim/TM-Case-Booking
 
 ## ✨ Key Features
 
@@ -19,7 +19,7 @@ This is the **Production Environment** for the TM Case Booking System. This vers
 - Role-based access control system
 - Multi-role support: Admin, Operations, Sales, Driver, IT
 - Department and country-based access restrictions
-- Secure session management with production security
+- Secure session management
 
 ### 📋 Case Management Workflow
 ```
@@ -48,336 +48,252 @@ Delivered (Hospital) → Case Completed → Pending Delivery (Office) → Delive
 ### Prerequisites
 - Node.js 18+ 
 - npm or yarn
-- Git with SSH access
+- Git
 
-### Production Deployment Setup
+### Development Setup
 
-1. **Clone the production repository**
+1. **Clone the repository**
    ```bash
-   git clone git@github.com:Mika-Nim/Live-CaseBooking.git
-   cd Live-CaseBooking
+   git clone https://github.com/Mika-Nim/TM-Case-Booking.git
+   cd TM-Case-Booking
    ```
 
-2. **Install dependencies**
+2. **Switch to development branch**
+   ```bash
+   git checkout development
+   ```
+
+3. **Install dependencies**
    ```bash
    npm install
    ```
 
-3. **Set up production environment**
+4. **Set up environment variables**
    ```bash
-   cp .env.production .env
+   cp .env.development .env
    ```
 
-4. **Build for production**
+5. **Start development server**
    ```bash
-   npm run prod:build
+   npm run dev:start
+   # OR traditional way:
+   npm start
    ```
 
-5. **Deploy to GitHub Pages**
-   ```bash
-   npm run prod:deploy
-   ```
-
-6. **Access the live application**
-   - URL: https://mika-nim.github.io/Live-CaseBooking/
-   - Use production admin credentials
+6. **Access the application**
+   - Open: http://localhost:3000
+   - Use default admin credentials or create new users
 
 ## 📜 Available Scripts
+
+### 🔧 Development Scripts
+```bash
+# Start development server
+npm run dev:start
+
+# Build for development testing
+npm run dev:build
+
+# Kill port 3000 (if stuck)
+npm run kill:port
+
+# Development with auto-restart
+npm run dev:watch
+```
 
 ### 🚀 Production Scripts
 ```bash
 # Build for production
 npm run prod:build
 
-# Deploy to GitHub Pages
+# Deploy to production (requires setup)
 npm run prod:deploy
 
-# Full production deployment
-npm run deploy:production
-
-# Production health check
-npm run prod:health
+# Push to production repository
+npm run git:prod
 ```
 
-### 🔧 Development Scripts (for testing)
+### 🛠️ Utility Scripts
 ```bash
-# Start local production build
-npm run prod:serve
+# TypeScript type checking
+npm run typecheck
 
-# Test production build locally
-npm run prod:test
+# Quick build (first 20 lines of output)
+npm run quick-build
 
-# Verify production configuration
-npm run prod:verify
+# Component analysis
+npm run component-summary
+
+# Bundle size analysis
+npm run size-analysis
+
+# Code optimization
+npm run claude-optimize
 ```
 
-### 🛠️ Maintenance Scripts
+### 📊 Git Management Scripts
 ```bash
-# Check application health
-npm run health:check
+# Push to development branch
+npm run git:dev
 
-# Backup production data
-npm run backup:create
+# Push to production repository
+npm run git:prod
 
-# Restore from backup
-npm run backup:restore
-
-# Update dependencies
-npm run deps:update
-```
-
-### 📊 Monitoring Scripts
-```bash
-# Check performance metrics
-npm run metrics:check
-
-# Generate usage report
-npm run report:usage
-
-# Check error logs
-npm run logs:errors
-
-# System status
-npm run status:system
-```
-
-### 🔄 Version Management
-```bash
-# Create production release
-npm run release:production
-
-# Rollback to previous version
-npm run rollback:previous
-
-# Tag new version
-npm run version:tag
-
-# Create hotfix
-npm run hotfix:create
+# Create new version tag
+npm run version:patch  # 1.2.0 -> 1.2.1
+npm run version:minor  # 1.2.0 -> 1.3.0
+npm run version:major  # 1.2.0 -> 2.0.0
 ```
 
 ## 🗃️ Database & Integration
 
 ### Supabase Configuration
-- **Production Database**: `yjllfmmzgnapsqfddbwt.supabase.co`
-- **High availability**: Multi-region backup
-- **Row Level Security**: Enforced
-- **Real-time subscriptions**: Enabled
-- **Connection pooling**: Optimized for production load
+- **Development Database**: `puppogbxzkppdesjvhev.supabase.co`
+- **Real-time updates**: Enabled
+- **Row Level Security**: Configured
+- **Auto-migration**: On application start
 
-### Production Data
-- Live case data from multiple countries
-- Real user accounts and permissions
-- Production file attachments
-- Audit logs and compliance data
-- Performance metrics
+### Data Models
+- Cases with complete audit trail
+- Users with role and department assignments
+- Status history tracking
+- File attachments support
+- Amendment history
 
 ## 🏗️ Architecture
 
 ### Technology Stack
-- **Frontend**: React 18 + TypeScript (Production Build)
-- **Database**: Supabase (PostgreSQL with production SLA)
-- **CDN**: GitHub Pages with global distribution
-- **Monitoring**: Built-in error tracking
-- **Security**: HTTPS, CSP headers, XSS protection
+- **Frontend**: React 18 + TypeScript
+- **Database**: Supabase (PostgreSQL)
+- **Styling**: CSS3 with custom design system
+- **State Management**: React Context + Hooks
+- **Build Tool**: Create React App
+- **Deployment**: GitHub Actions → GitHub Pages
 
-### Production Infrastructure
+### Project Structure
 ```
-Users → GitHub Pages → React App → Supabase Production DB
-              ↓
-         Error Tracking & Monitoring
-              ↓
-         Automated Backups & Security
+src/
+├── components/          # React components
+├── services/           # API and database services
+├── hooks/              # Custom React hooks
+├── contexts/           # React context providers
+├── types/              # TypeScript type definitions
+├── constants/          # Application constants
+├── styles/             # CSS styles and themes
+└── utils/              # Utility functions
 ```
+
+## 🧪 Testing & Development
+
+### Environment Variables
+The application automatically uses development configuration:
+- Development Supabase database
+- Development OAuth settings
+- Debug logging enabled
+
+### Testing Features
+- User role simulation
+- Case workflow testing
+- File upload testing
+- Notification system testing
+- Multi-country data testing
+
+## 📱 Features in Detail
+
+### Case Management
+- Multi-step case creation wizard
+- Advanced filtering and search
+- Bulk operations support
+- Export capabilities
+- Amendment tracking
+
+### User Experience
+- Responsive design (mobile-first)
+- Dark/light mode support
+- Sound notifications
+- Keyboard shortcuts
+- Accessibility compliance
+
+### File Management
+- Image upload for delivery confirmation
+- Attachment support for case completion
+- Secure file storage via Supabase
+- File size and type validation
 
 ## 🔄 Deployment Pipeline
 
-### Automated Production Deployment
-- **Trigger**: Push to `main` branch
-- **Build**: GitHub Actions with production optimizations
-- **Deploy**: Automatic deployment to GitHub Pages
-- **Monitor**: Post-deployment health checks
+### Development Workflow
+1. Develop on `development` branch
+2. Test locally with development database
+3. Create pull request for review
+4. Merge to `main` for production deployment
 
-### Manual Deployment Process
-1. Merge approved changes to `main` branch
-2. GitHub Actions automatically triggers build
-3. Production build deployed to GitHub Pages
-4. Health checks verify deployment success
-5. Monitoring alerts track application performance
-
-## 📊 Production Monitoring
-
-### Performance Metrics
-- Page load times
-- API response times
-- Database query performance
-- User session analytics
-- Error rates and tracking
-
-### Health Checks
-- Database connectivity
-- API endpoint availability
-- File upload functionality
-- User authentication flow
-- Cross-browser compatibility
-
-## 🔐 Security & Compliance
-
-### Production Security Features
-- HTTPS enforcement
-- Content Security Policy (CSP)
-- Cross-Site Scripting (XSS) protection
-- SQL injection prevention
-- Rate limiting on API endpoints
-- Secure session management
-- Data encryption in transit and at rest
-
-### Compliance
-- GDPR compliance for EU users
-- HIPAA considerations for medical data
-- SOC 2 Type II compliance
-- Regular security audits
-- Data retention policies
-
-## 🚨 Emergency Procedures
-
-### Incident Response
-1. **Immediate Response**: Monitor alerts and error logs
-2. **Assessment**: Determine impact and severity
-3. **Mitigation**: Apply hotfixes or rollback if needed
-4. **Communication**: Notify stakeholders
-5. **Resolution**: Implement permanent fix
-6. **Post-mortem**: Document lessons learned
-
-### Rollback Procedure
-```bash
-# Quick rollback to previous version
-npm run rollback:previous
-
-# Rollback to specific version
-npm run rollback:version 1.2.0
-
-# Emergency maintenance mode
-npm run maintenance:enable
-```
-
-### Backup & Recovery
-- **Automated Backups**: Daily at 2 AM UTC
-- **Backup Retention**: 30 days
-- **Recovery Time**: < 4 hours
-- **Data Loss**: < 15 minutes
-
-## 📱 User Features
-
-### Production-Ready Features
-- Real-time case updates
-- Multi-user collaboration
-- File upload and management
-- Advanced reporting and analytics
-- Mobile-responsive design
-- Offline capability (limited)
-- Print-friendly views
-- Export to PDF/Excel
-
-### Performance Optimizations
-- Code splitting and lazy loading
-- Image optimization and compression
-- Caching strategies
-- Bundle size optimization
-- Database query optimization
+### Automated Deployment
+- GitHub Actions automatically builds and deploys
+- Environment-specific configurations
+- Production builds optimized for performance
 
 ## 🐛 Troubleshooting
 
-### Common Production Issues
+### Common Issues
 
-**Application not loading:**
+**Port 3000 already in use:**
 ```bash
-# Check service status
-npm run status:check
-# Verify DNS and CDN
-npm run verify:deployment
+npm run kill:port
 ```
 
 **Database connection issues:**
 ```bash
-# Test database connectivity
-npm run test:database
-# Check Supabase status
-npm run status:supabase
+# Check environment variables
+cat .env
+# Verify Supabase connection
+npm run test:db
 ```
 
-**Performance issues:**
+**Build failures:**
 ```bash
-# Run performance audit
-npm run audit:performance
-# Check resource usage
-npm run monitor:resources
+# Clean build
+npm run clean && npm install
+# Type check
+npm run typecheck
 ```
 
-### Support Escalation
-1. **Level 1**: Check status dashboard
-2. **Level 2**: Review error logs and metrics
-3. **Level 3**: Contact system administrator
-4. **Level 4**: Emergency escalation to development team
+### Debug Mode
+Set environment variable for detailed logging:
+```bash
+REACT_APP_DEBUG=true npm start
+```
 
-## 📞 Production Support
+## 📞 Support & Documentation
 
-### Support Channels
-- **Status Page**: [Production Status Dashboard]
-- **Documentation**: Complete system documentation
-- **Emergency Contact**: 24/7 support hotline
-- **Maintenance Windows**: Scheduled during low-traffic periods
+### Resources
+- **Technical Documentation**: See `/docs` folder
+- **API Documentation**: Supabase Dashboard
+- **Component Guide**: `/src/components/README.md`
+- **Deployment Guide**: `/.github/workflows/README.md`
 
-### Monitoring Tools
-- Real-time application monitoring
-- Database performance tracking
-- User session analytics
-- Error tracking and alerting
-- Uptime monitoring (99.9% SLA)
+### Getting Help
+1. Check browser console for errors
+2. Verify network connectivity to Supabase
+3. Ensure proper environment configuration
+4. Review application logs
 
-## 📈 Performance Standards
+## 🔐 Security
 
-### Service Level Objectives (SLOs)
-- **Uptime**: 99.9% (8.76 hours downtime/year)
-- **Response Time**: < 2 seconds for 95% of requests
-- **Database Queries**: < 500ms average response time
-- **Error Rate**: < 0.1% of all requests
+### Development Security
+- Environment variables for sensitive data
+- HTTPS enforcement in production
+- Row-level security in database
+- Input validation and sanitization
+- XSS protection
 
-### Capacity Planning
-- **Concurrent Users**: 500+ simultaneous users
-- **Database**: 10,000+ cases per month
-- **File Storage**: 1TB+ attachment storage
-- **Bandwidth**: Optimized for global access
+## 📄 License
 
-## 🔄 Maintenance Schedule
-
-### Regular Maintenance
-- **Weekly**: Security patches and minor updates
-- **Monthly**: Feature releases and performance optimizations
-- **Quarterly**: Major version updates and infrastructure reviews
-- **Annually**: Security audits and compliance reviews
-
-### Planned Downtime
-- **Schedule**: Sundays 2-4 AM UTC (minimal traffic period)
-- **Notification**: 48-hour advance notice
-- **Duration**: Typically < 30 minutes
-- **Communication**: Status page and email notifications
-
-## 📄 License & Legal
-
-This is proprietary software for TM Case Booking System Production Environment.
-
-### Terms of Service
-- Production use only
-- No unauthorized access
-- Data privacy compliance
-- Security incident reporting
+This project is proprietary software for TM Case Booking System.
 
 ---
 
 **Version**: 1.2.1  
 **Last Updated**: January 2025  
-**Maintainer**: TM Production Team  
-**Environment**: Production  
-**SLA**: 99.9% Uptime Guarantee  
-**Support**: 24/7 Production Support  
+**Maintainer**: TM Development Team  
+**Environment**: Development  
