@@ -1,11 +1,13 @@
 {
   "files": {
-    "main.css": "/Live-CaseBooking/static/css/main.4e4a03f9.css",
-    "main.js": "/Live-CaseBooking/static/js/main.add5dc1a.js",
-    "index.html": "/Live-CaseBooking/index.html"
+    "main.css": "/Live-CaseBooking/static/css/main.0c0d5b0e.css",
+    "main.js": "/Live-CaseBooking/static/js/main.343a0d09.js",
+    "index.html": "/Live-CaseBooking/index.html",
+    "main.0c0d5b0e.css.map": "/Live-CaseBooking/static/css/main.0c0d5b0e.css.map",
+    "main.343a0d09.js.map": "/Live-CaseBooking/static/js/main.343a0d09.js.map"
   },
   "entrypoints": [
-    "static/css/main.4e4a03f9.css",
-    "static/js/main.add5dc1a.js"
+    "static/css/main.0c0d5b0e.css",
+    "static/js/main.343a0d09.js"
   ]
 }
