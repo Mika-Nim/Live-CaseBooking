@@ -101,16 +101,22 @@ npm run kill:port
 npm run dev:watch
 ```
 
-### 🚀 Production Scripts
+### 🚀 Deployment Scripts
 ```bash
+# Deploy to BOTH Development and Production (RECOMMENDED)
+npm run deploy:both
+
+# Quick deploy to both (no confirmations)
+npm run deploy:quick
+
+# Deploy to production only
+npm run git:prod
+
+# Full production deployment workflow
+npm run deploy:production
+
 # Build for production
 npm run prod:build
-
-# Deploy to production (requires setup)
-npm run prod:deploy
-
-# Push to production repository
-npm run git:prod
 ```
 
 ### 🛠️ Utility Scripts
@@ -222,16 +228,47 @@ The application automatically uses development configuration:
 
 ## 🔄 Deployment Pipeline
 
-### Development Workflow
-1. Develop on `development` branch
-2. Test locally with development database
-3. Create pull request for review
-4. Merge to `main` for production deployment
+### Development Workflow (RECOMMENDED)
+1. **Develop**: Work on `development` branch with development Supabase database
+2. **Test**: Test locally using `npm run dev:start`
+3. **Deploy Both**: Use `npm run deploy:both` to deploy to both repositories
+4. **Verify**: Test production at https://mika-nim.github.io/Live-CaseBooking/
 
-### Automated Deployment
-- GitHub Actions automatically builds and deploys
-- Environment-specific configurations
-- Production builds optimized for performance
+### Deployment Commands
+
+#### 🎯 Primary Deployment (Use This!)
+```bash
+npm run deploy:both
+```
+**What it does:**
+- ✅ Commits and pushes to Development repository
+- ✅ Builds with Production Supabase configuration
+- ✅ Deploys to Production repository (GitHub Pages)
+- ✅ Automatically switches environments
+- ✅ Restores development environment
+
+#### ⚡ Quick Deployment (For Rapid Iterations)
+```bash
+npm run deploy:quick
+```
+**What it does:**
+- Same as `deploy:both` but faster (no confirmations)
+- Perfect for quick feature testing
+
+### Environment Configurations
+
+| Environment | Repository | Database | Live URL |
+|-------------|------------|----------|----------|
+| **Development** | TM-Case-Booking | `puppogbxzkppdesjvhev.supabase.co` | localhost:3000 |
+| **Production** | Live-CaseBooking | `yjllfmmzgnapsqfddbwt.supabase.co` | https://mika-nim.github.io/Live-CaseBooking/ |
+
+### Automated Environment Switching
+The deployment scripts automatically handle:
+- ✅ Supabase database URLs
+- ✅ Environment variables
+- ✅ README files (dev vs prod)
+- ✅ Package.json homepage URLs
+- ✅ Build configurations
 
 ## 🐛 Troubleshooting
 

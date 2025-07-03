@@ -49,6 +49,8 @@
     "version:minor": "npm version minor && git push --tags",
     "version:major": "npm version major && git push --tags",
     "deploy:production": "chmod +x scripts/deploy-production.sh && ./scripts/deploy-production.sh",
+    "deploy:both": "chmod +x scripts/deploy-both.sh && ./scripts/deploy-both.sh",
+    "deploy:quick": "chmod +x scripts/deploy-quick.sh && ./scripts/deploy-quick.sh",
     "health:check": "chmod +x scripts/health-check.sh && ./scripts/health-check.sh",
     "clean": "rm -rf node_modules build .claude-optimized && npm cache clean --force"
   },
