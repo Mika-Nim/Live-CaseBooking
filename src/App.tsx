@@ -30,9 +30,6 @@ import './components/AuditLogs.css';
 
 type ActivePage = 'booking' | 'cases' | 'process' | 'users' | 'sets' | 'reports' | 'calendar' | 'permissions' | 'codetables' | 'audit-logs' | 'email-config';
 
-
-
-
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [activePage, setActivePage] = useState<ActivePage>('booking');

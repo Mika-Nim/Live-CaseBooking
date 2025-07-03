@@ -38,11 +38,7 @@ cp .env.development .env
 
 if ! git diff-index --quiet HEAD --; then
     git add .
-    git commit -m "Quick update v${VERSION} - $(date '+%H:%M:%S')
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+    git commit -m "Quick update v${VERSION} - $(date '+%H:%M:%S')"
 fi
 
 git push origin development
@@ -57,11 +53,7 @@ sed -i 's|"homepage": "\."|"homepage": "https://mika-nim.github.io/Live-CaseBook
 npm run build >/dev/null
 
 git add .
-git commit -m "Production v${VERSION} - $(date '+%H:%M:%S')
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+git commit -m "Production v${VERSION} - $(date '+%H:%M:%S')"
 
 # Set up production remote
 git remote add production git@github.com:Mika-Nim/Live-CaseBooking.git 2>/dev/null || \
@@ -77,11 +69,7 @@ cp README.dev.backup README.md
 sed -i 's|"homepage": "https://mika-nim.github.io/Live-CaseBooking"|"homepage": "\."|g' package.json
 
 git add .
-git commit -m "Restore dev environment
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>" 2>/dev/null || true
+git commit -m "Restore dev environment" 2>/dev/null || true
 
 git push origin development 2>/dev/null || true
 

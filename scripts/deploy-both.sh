@@ -71,17 +71,9 @@ if ! git diff-index --quiet HEAD --; then
     if [ -z "$COMMIT_MSG" ]; then
         COMMIT_MSG="Development update v${VERSION} - $(date '+%Y-%m-%d %H:%M:%S')
 
-Features and improvements ready for production deployment.
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+Features and improvements ready for production deployment."
     else
-        COMMIT_MSG="$COMMIT_MSG
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+        COMMIT_MSG="$COMMIT_MSG"
     fi
     
     git add .
@@ -136,11 +128,7 @@ git commit -m "Production deployment v${VERSION} - $(date '+%Y-%m-%d %H:%M:%S')
 - Latest development features
 - Production Supabase configuration (yjllfmmzgnapsqfddbwt.supabase.co)
 - Optimized production build
-- GitHub Pages configuration
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>" || {
+- GitHub Pages configuration" || {
     echo "❌ Production commit failed"
     exit 1
 }
@@ -188,11 +176,7 @@ git commit -m "Restore development environment after production deployment
 
 - Restored development README and configuration
 - Reset homepage for development
-- Environment ready for continued development
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>" || echo "⚠️  Restoration commit failed (continuing)"
+- Environment ready for continued development" || echo "⚠️  Restoration commit failed (continuing)"
 
 # Push restoration to development
 git push origin development || echo "⚠️  Failed to push restoration (continuing)"

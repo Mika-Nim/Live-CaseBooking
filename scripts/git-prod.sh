@@ -50,17 +50,9 @@ if ! git diff-index --quiet HEAD --; then
 Production build with:
 - Latest Supabase integration
 - Optimized performance
-- Security updates
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+- Security updates"
     else
-        COMMIT_MSG="$COMMIT_MSG
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+        COMMIT_MSG="$COMMIT_MSG"
     fi
     
     # Stage all changes

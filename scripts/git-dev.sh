@@ -31,17 +31,9 @@ if ! git diff-index --quiet HEAD --; then
     read -r COMMIT_MSG
     
     if [ -z "$COMMIT_MSG" ]; then
-        COMMIT_MSG="Update development build - $(date '+%Y-%m-%d %H:%M:%S')
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+        COMMIT_MSG="Update development build - $(date '+%Y-%m-%d %H:%M:%S')"
     else
-        COMMIT_MSG="$COMMIT_MSG
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+        COMMIT_MSG="$COMMIT_MSG"
     fi
     
     # Stage all changes

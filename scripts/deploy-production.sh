@@ -88,11 +88,7 @@ if ! git diff-index --quiet HEAD --; then
 - Latest features and bug fixes
 - Production optimizations
 - Database integration updates
-- Security enhancements
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>" || {
+- Security enhancements" || {
         echo "❌ Commit failed"
         exit 1
     }
