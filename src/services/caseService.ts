@@ -6,6 +6,7 @@
 import { CaseBooking, CaseStatus, StatusHistory } from '../types';
 import userService from './userService';
 import notificationService from './notificationService';
+import { caseOperations } from './database';
 
 class CaseService {
   private static instance: CaseService;
@@ -23,7 +24,7 @@ class CaseService {
   /**
    * Get all cases with caching
    */
-  getAllCases(forceRefresh = false): CaseBooking[] {
+  async getAllCases(forceRefresh = false): Promise<CaseBooking[]> {
     const now = Date.now();
     const cacheValid = (now - this.lastFetchTime) < this.CACHE_DURATION;
 
@@ -32,8 +33,7 @@ class CaseService {
     }
 
     try {
-      const casesData = localStorage.getItem('cases');
-      const cases: CaseBooking[] = casesData ? JSON.parse(casesData) : [];
+      const cases = await caseOperations.getAll();
       
       // Update cache
       this.casesCache.clear();
@@ -52,32 +52,29 @@ class CaseService {
   /**
    * Get case by ID
    */
-  getCaseById(id: string): CaseBooking | null {
+  async getCaseById(id: string): Promise<CaseBooking | null> {
     if (this.casesCache.has(id)) {
       return this.casesCache.get(id)!;
     }
 
-    const cases = this.getAllCases();
+    const cases = await this.getAllCases();
     return cases.find(c => c.id === id) || null;
   }
 
   /**
    * Save case
    */
-  saveCase(caseData: CaseBooking): boolean {
+  async saveCase(caseData: CaseBooking): Promise<boolean> {
     try {
-      const cases = this.getAllCases();
-      const existingIndex = cases.findIndex(c => c.id === caseData.id);
+      const existingCase = await this.getCaseById(caseData.id);
       
-      if (existingIndex >= 0) {
-        cases[existingIndex] = caseData;
+      if (existingCase) {
+        await caseOperations.update(caseData.id, caseData);
       } else {
-        cases.push(caseData);
+        await caseOperations.create(caseData);
       }
       
-      localStorage.setItem('cases', JSON.stringify(cases));
       this.casesCache.set(caseData.id, caseData);
-      
       return true;
     } catch (error) {
       console.error('Error saving case:', error);
@@ -88,14 +85,14 @@ class CaseService {
   /**
    * Update case status with history tracking
    */
-  updateCaseStatus(
+  async updateCaseStatus(
     caseId: string, 
     newStatus: CaseStatus, 
     details?: string,
     attachments?: string[]
-  ): boolean {
+  ): Promise<boolean> {
     try {
-      const caseItem = this.getCaseById(caseId);
+      const caseItem = await this.getCaseById(caseId);
       if (!caseItem) {
         console.error('Case not found:', caseId);
         return false;
@@ -107,44 +104,21 @@ class CaseService {
         return false;
       }
 
-      const timestamp = new Date().toISOString();
+      // Use Supabase service to update status
+      await caseOperations.updateStatus(caseId, newStatus, currentUser.name, details);
       
-      // Create status history entry
-      const statusEntry: StatusHistory = {
-        status: newStatus,
-        timestamp,
-        processedBy: currentUser.name,
-        user: currentUser.name,
-        details: details || '',
-        attachments: attachments || []
-      };
-
-      // Update case
-      const updatedCase: CaseBooking = {
-        ...caseItem,
-        status: newStatus,
-        statusHistory: [...(caseItem.statusHistory || []), statusEntry],
-        // Update status-specific fields
-        ...(newStatus === 'Order Preparation' && {
-          processedBy: currentUser.name,
-          processedAt: timestamp,
-          processOrderDetails: details
-        })
-      };
-
-      const success = this.saveCase(updatedCase);
+      // Update cache
+      this.casesCache.delete(caseId);
       
-      if (success) {
-        // Send notification
-        notificationService.addNotification({
-          title: `Case Status Updated: ${newStatus}`,
-          message: `Case ${caseItem.caseReferenceNumber} has been updated to ${newStatus} by ${currentUser.name}`,
-          type: 'success',
-          timestamp
-        });
-      }
+      // Send notification
+      notificationService.addNotification({
+        title: `Case Status Updated: ${newStatus}`,
+        message: `Case ${caseItem.caseReferenceNumber} has been updated to ${newStatus} by ${currentUser.name}`,
+        type: 'success',
+        timestamp: new Date().toISOString()
+      });
 
-      return success;
+      return true;
     } catch (error) {
       console.error('Error updating case status:', error);
       return false;
@@ -154,11 +128,11 @@ class CaseService {
   /**
    * Get cases filtered by user permissions
    */
-  getCasesForUser(): CaseBooking[] {
+  async getCasesForUser(): Promise<CaseBooking[]> {
     const currentUser = userService.getCurrentUser();
     if (!currentUser) return [];
 
-    const allCases = this.getAllCases();
+    const allCases = await this.getAllCases();
 
     // Admin sees all cases
     if (currentUser.role === 'admin') {
@@ -178,11 +152,11 @@ class CaseService {
   /**
    * Search cases
    */
-  searchCases(query: string): CaseBooking[] {
-    if (!query.trim()) return this.getCasesForUser();
+  async searchCases(query: string): Promise<CaseBooking[]> {
+    if (!query.trim()) return await this.getCasesForUser();
 
     const searchTerm = query.toLowerCase().trim();
-    const cases = this.getCasesForUser();
+    const cases = await this.getCasesForUser();
 
     return cases.filter(caseItem => 
       caseItem.caseReferenceNumber.toLowerCase().includes(searchTerm) ||
@@ -197,16 +171,16 @@ class CaseService {
   /**
    * Get cases by status
    */
-  getCasesByStatus(status: CaseStatus): CaseBooking[] {
-    const cases = this.getCasesForUser();
+  async getCasesByStatus(status: CaseStatus): Promise<CaseBooking[]> {
+    const cases = await this.getCasesForUser();
     return cases.filter(caseItem => caseItem.status === status);
   }
 
   /**
    * Get cases by date range
    */
-  getCasesByDateRange(startDate: string, endDate: string): CaseBooking[] {
-    const cases = this.getCasesForUser();
+  async getCasesByDateRange(startDate: string, endDate: string): Promise<CaseBooking[]> {
+    const cases = await this.getCasesForUser();
     return cases.filter(caseItem => {
       const caseDate = caseItem.dateOfSurgery;
       return caseDate >= startDate && caseDate <= endDate;
@@ -216,12 +190,9 @@ class CaseService {
   /**
    * Delete case
    */
-  deleteCase(caseId: string): boolean {
+  async deleteCase(caseId: string): Promise<boolean> {
     try {
-      const cases = this.getAllCases();
-      const filteredCases = cases.filter(c => c.id !== caseId);
-      
-      localStorage.setItem('cases', JSON.stringify(filteredCases));
+      await caseOperations.delete(caseId);
       this.casesCache.delete(caseId);
       
       return true;
@@ -234,8 +205,8 @@ class CaseService {
   /**
    * Generate unique case reference number
    */
-  generateCaseReferenceNumber(): string {
-    const cases = this.getAllCases();
+  async generateCaseReferenceNumber(): Promise<string> {
+    const cases = await this.getAllCases();
     const currentYear = new Date().getFullYear();
     const yearCases = cases.filter(c => 
       c.caseReferenceNumber.startsWith(`TMC${currentYear}`)
@@ -256,8 +227,8 @@ class CaseService {
   /**
    * Get cases count by status
    */
-  getCasesCountByStatus(): Record<CaseStatus, number> {
-    const cases = this.getCasesForUser();
+  async getCasesCountByStatus(): Promise<Record<CaseStatus, number>> {
+    const cases = await this.getCasesForUser();
     const counts = {} as Record<CaseStatus, number>;
 
     // Initialize all possible statuses with 0

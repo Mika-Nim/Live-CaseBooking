@@ -74,7 +74,14 @@
       "WebFetch(domain:github.com)",
       "Bash(./scripts/setup-environment.sh:*)",
       "Bash(curl:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "WebFetch(domain:mika-nim.github.io)",
+      "Bash(git clone:*)",
+      "Bash(npm run deploy:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(ssh:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }

@@ -24,7 +24,7 @@ export const useCaseActions = (caseItem: CaseBooking) => {
     }
 
     try {
-      const updateResult = caseService.updateCaseStatus(
+      const updateResult = await caseService.updateCaseStatus(
         caseItem.id,
         newStatus,
         details,
@@ -90,7 +90,7 @@ export const useCaseActions = (caseItem: CaseBooking) => {
         amendedAt: new Date().toISOString()
       };
 
-      const saveResult = caseService.saveCase(updatedCase);
+      const saveResult = await caseService.saveCase(updatedCase);
       if (saveResult) {
         success('Case Amended', `Case ${caseItem.caseReferenceNumber} has been amended`);
         return true;

@@ -571,6 +571,15 @@ export const caseOperations = {
 
     if (error) throw error
     return data.id
+  },
+
+  async delete(caseId: string): Promise<void> {
+    const { error } = await supabase
+      .from('cases')
+      .delete()
+      .eq('id', caseId)
+
+    if (error) throw error
   }
 }
 
