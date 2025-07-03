@@ -66,6 +66,19 @@ export const useCases = (options: UseCasesOptions = {}) => {
     return success;
   }, [refreshCases]);
 
+  const amendCase = useCallback(async (
+    caseId: string,
+    amendmentData: Partial<CaseBooking>,
+    amendedBy: string,
+    isAdmin: boolean = false
+  ) => {
+    const success = await caseService.amendCase(caseId, amendmentData, amendedBy, isAdmin);
+    if (success) {
+      refreshCases();
+    }
+    return success;
+  }, [refreshCases]);
+
   // Auto-refresh setup
   useEffect(() => {
     if (autoRefresh && refreshInterval > 0) {
@@ -87,6 +100,7 @@ export const useCases = (options: UseCasesOptions = {}) => {
     updateCaseStatus,
     saveCase,
     deleteCase,
+    amendCase,
     generateCaseReferenceNumber: () => caseService.generateCaseReferenceNumber()
   };
 };

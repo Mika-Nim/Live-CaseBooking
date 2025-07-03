@@ -2,8 +2,6 @@ import { supabase } from './supabase'
 import type { 
   CaseBooking, 
   User, 
-  StatusHistory, 
-  AmendmentHistory, 
   Notification
 } from '../types'
 
@@ -258,6 +256,58 @@ export const userOperations = {
 
     if (error) throw error
     return data.id
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('users')
+      .update({ enabled: false })
+      .eq('id', id)
+
+    if (error) throw error
+  },
+
+  async authenticate(username: string, password: string, country: string): Promise<{ user: User | null; error?: string }> {
+    try {
+      // Try to authenticate with Supabase auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: username.includes('@') ? username : `${username}@company.com`,
+        password: password,
+      })
+
+      if (error) {
+        return { user: null, error: "Invalid username or password" }
+      }
+
+      if (!data.user) {
+        return { user: null, error: "Authentication failed" }
+      }
+
+      // Get user profile with role and permissions
+      const userProfile = await this.getById(data.user.id)
+      
+      if (!userProfile) {
+        return { user: null, error: "User profile not found" }
+      }
+
+      // Check if user is enabled
+      if (!userProfile.enabled) {
+        return { user: null, error: "Your account has been disabled. Please contact your administrator." }
+      }
+
+      // Check country access
+      if (userProfile.role !== 'admin' && userProfile.countries && !userProfile.countries.includes(country)) {
+        return { user: null, error: "Your account is not assigned to the selected country" }
+      }
+
+      // Add selected country to user profile
+      const userWithCountry = { ...userProfile, selectedCountry: country }
+      
+      return { user: userWithCountry }
+    } catch (error) {
+      console.error('Authentication error:', error)
+      return { user: null, error: "Authentication failed" }
+    }
   }
 }
 
@@ -941,7 +991,7 @@ export const subscriptions = {
   }
 }
 
-export default {
+const supabaseService = {
   countryOperations,
   userOperations,
   caseOperations,
@@ -951,3 +1001,5 @@ export default {
   fileOperations,
   subscriptions
 }
+
+export default supabaseService

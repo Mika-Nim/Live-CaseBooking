@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { authenticate } from '../utils/auth';
 import { User } from '../types';
 import { getCountries, initializeCodeTables } from '../utils/codeTable';
 import SearchableDropdown from './SearchableDropdown';
+import { useAuth } from '../contexts/AuthContext';
 
 interface LoginProps {
   onLogin: (user: User) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
+  const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [country, setCountry] = useState('');
@@ -60,16 +61,19 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       return;
     }
 
-    // Simulate loading for better UX
-    setTimeout(() => {
-      const result = authenticate(username, password, country);
+    try {
+      const result = await login(username, password, country);
       if (result.user) {
         onLogin(result.user);
       } else {
         setError(result.error || 'Login failed');
-        setIsLoading(false);
       }
-    }, 1000);
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

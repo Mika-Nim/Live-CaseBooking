@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { User } from '../types';
-import { getUsers, addUser, getCurrentUser } from '../utils/auth';
+import { getCurrentUser } from '../utils/auth';
+import { useUsers } from '../hooks/useUsers';
 import { useNotifications } from '../contexts/NotificationContext';
 import { useToast } from './ToastContainer';
 import { useSound } from '../contexts/SoundContext';
@@ -19,9 +20,9 @@ import '../styles/department-management.css';
 
 const UserManagement: React.FC = () => {
   const currentUser = getCurrentUser();
+  const { users, loading, error: usersError, addUser, updateUser, deleteUser } = useUsers();
   
   const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users');
-  const [users, setUsers] = useState<User[]>([]);
   const [showAddUser, setShowAddUser] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [showPasswordFor, setShowPasswordFor] = useState<string | null>(null);
@@ -91,7 +92,6 @@ const UserManagement: React.FC = () => {
   // ALL useEffect hooks MUST be called before any conditional returns
   useEffect(() => {
     initializeCodeTables();
-    loadUsers();
     
     // Load countries from code tables
     setAvailableCountries(getCountries());
@@ -99,11 +99,6 @@ const UserManagement: React.FC = () => {
     // Load available roles
     loadAvailableRoles();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  
-  // Reload users when country filter changes
-  useEffect(() => {
-    loadUsers();
-  }, [selectedCountryFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle escape key to close add user form (removed click outside functionality)
   useEffect(() => {
@@ -156,31 +151,30 @@ const UserManagement: React.FC = () => {
   };
 
 
-  const loadUsers = () => {
-    const allUsers = getUsers();
-    
-    // Filter users based on current user's role and country access
-    let filteredUsers = allUsers;
+  // Users are now loaded automatically via useUsers hook
+  // Filter users based on current user's role and country access
+  const filteredUsers = React.useMemo(() => {
+    let filtered = users;
     
     if (currentUser?.role === 'it' && currentUser.selectedCountry) {
       // IT can only see users from their assigned country
-      filteredUsers = allUsers.filter(user => 
+      filtered = users.filter(user => 
         (user.countries && user.countries.includes(currentUser.selectedCountry!)) || user.role === 'admin'
       );
     } else if (currentUser?.role === 'admin') {
       // Admin can see all users
-      filteredUsers = allUsers;
+      filtered = users;
     }
     
     // Apply country filter if selected
     if (selectedCountryFilter) {
-      filteredUsers = filteredUsers.filter(user => 
+      filtered = filtered.filter(user => 
         user.countries && user.countries.includes(selectedCountryFilter)
       );
     }
     
-    setUsers(filteredUsers);
-  };
+    return filtered;
+  }, [users, currentUser, selectedCountryFilter]);
 
   const handleEditUser = (user: User) => {
     setEditingUser(user.id);
@@ -209,26 +203,28 @@ const UserManagement: React.FC = () => {
     }, 100);
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     const userToDelete = users.find(u => u.id === userId);
     const confirmMessage = `Are you sure you want to delete user "${userToDelete?.name}" (${userToDelete?.username})?\n\nThis action cannot be undone.`;
     
     if (window.confirm(confirmMessage)) {
-      const updatedUsers = users.filter(u => u.id !== userId);
-      localStorage.setItem('case-booking-users', JSON.stringify(updatedUsers));
-      loadUsers();
-      
-      playSound.delete();
-      showSuccess('User Deleted', `User "${userToDelete?.name}" has been successfully removed from the system.`);
-      addNotification({
-        title: 'User Account Deleted',
-        message: `${userToDelete?.name} (${userToDelete?.username}) has been removed from the user access matrix.`,
-        type: 'warning'
-      });
+      try {
+        await deleteUser(userId);
+        playSound.delete();
+        showSuccess('User Deleted', `User "${userToDelete?.name}" has been successfully removed from the system.`);
+        addNotification({
+          title: 'User Account Deleted',
+          message: `${userToDelete?.name} (${userToDelete?.username}) has been removed from the user access matrix.`,
+          type: 'warning'
+        });
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        setError('Failed to delete user. Please try again.');
+      }
     }
   };
 
-  const handleToggleUserStatus = (userId: string, currentStatus: boolean) => {
+  const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
     const userToToggle = users.find(u => u.id === userId);
     if (!userToToggle) return;
     
@@ -237,25 +233,23 @@ const UserManagement: React.FC = () => {
     const confirmMessage = `Are you sure you want to ${newStatus ? 'enable' : 'disable'} user "${userToToggle.name}" (${userToToggle.username})?\n\nThis will ${newStatus ? 'allow' : 'prevent'} them from logging into the system.`;
     
     if (window.confirm(confirmMessage)) {
-      const updatedUsers = users.map(u => 
-        u.id === userId 
-          ? { ...u, enabled: newStatus }
-          : u
-      );
-      localStorage.setItem('case-booking-users', JSON.stringify(updatedUsers));
-      loadUsers();
-      
-      playSound.success();
-      showSuccess('User Status Updated', `User "${userToToggle.name}" has been ${action}.`);
-      addNotification({
-        title: `User Account ${newStatus ? 'Enabled' : 'Disabled'}`,
-        message: `${userToToggle.name} (${userToToggle.username}) has been ${action} in the system.`,
-        type: newStatus ? 'success' : 'warning'
-      });
+      try {
+        await updateUser(userId, { enabled: newStatus });
+        playSound.success();
+        showSuccess('User Status Updated', `User "${userToToggle.name}" has been ${action}.`);
+        addNotification({
+          title: `User Account ${newStatus ? 'Enabled' : 'Disabled'}`,
+          message: `${userToToggle.name} (${userToToggle.username}) has been ${action} in the system.`,
+          type: newStatus ? 'success' : 'warning'
+        });
+      } catch (error) {
+        console.error('Error updating user status:', error);
+        setError('Failed to update user status. Please try again.');
+      }
     }
   };
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -284,12 +278,7 @@ const UserManagement: React.FC = () => {
     try {
       if (editingUser) {
         // Update existing user
-        const updatedUsers = users.map(u => 
-          u.id === editingUser 
-            ? { ...u, ...newUser }
-            : u
-        );
-        localStorage.setItem('case-booking-users', JSON.stringify(updatedUsers));
+        await updateUser(editingUser, newUser);
         
         playSound.success();
         showSuccess('User Updated', `${newUser.name}'s account has been successfully updated.`);
@@ -300,7 +289,7 @@ const UserManagement: React.FC = () => {
         });
       } else {
         // Add new user
-        addUser(newUser);
+        await addUser(newUser);
         
         playSound.success();
         showSuccess('User Created', `Welcome ${newUser.name}! New user account has been created successfully.`);
@@ -323,7 +312,6 @@ const UserManagement: React.FC = () => {
       });
       setEditingUser(null);
       setShowAddUser(false);
-      loadUsers();
     } catch (err) {
       const errorMessage = editingUser ? 'Failed to update user' : 'Failed to add user';
       setError(errorMessage);
@@ -347,10 +335,31 @@ const UserManagement: React.FC = () => {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="loading-container" style={{ padding: '2rem', textAlign: 'center' }}>
+        <div className="loading-spinner"></div>
+        <p>Loading users...</p>
+      </div>
+    );
+  }
+
+  if (usersError) {
+    return (
+      <div className="error-container" style={{ padding: '2rem', textAlign: 'center' }}>
+        <h3>Error Loading Users</h3>
+        <p>{usersError}</p>
+        <button onClick={() => window.location.reload()} className="btn btn-primary">
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   // Pagination helpers
   // Filter users based on search and filter criteria
   const getFilteredUsers = () => {
-    return users.filter(user => {
+    return filteredUsers.filter(user => {
       // Search query filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -430,8 +439,8 @@ const UserManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Country Filter for User Preview */}
-      {(currentUser?.role === 'admin' || currentUser?.role === 'it') && (
+      {/* Country Filter for User Preview - Admin Only */}
+      {currentUser?.role === 'admin' && (
         <div className="country-filter-section">
           <div className="country-filter-header">
             <h3>🌍 Filter Users by Country:</h3>

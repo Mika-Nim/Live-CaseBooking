@@ -81,7 +81,9 @@
       "Bash(git remote set-url:*)",
       "Bash(ssh:*)",
       "Bash(grep:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(sed:*)",
+      "Bash(timeout 5s npm start)"
     ],
     "deny": []
   }

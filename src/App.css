@@ -2052,23 +2052,31 @@ body {
   position: relative;
 }
 
+.password-input-group input {
+  padding-right: 45px !important;
+}
+
 .password-toggle {
   position: absolute !important;
-  right: 12px !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
+  right: 8px !important;
+  top: 18px !important;
+  transform: none !important;
   background: none !important;
   border: none !important;
   cursor: pointer !important;
-  font-size: 16px !important;
+  font-size: 14px !important;
   color: var(--text-secondary) !important;
   transition: color 0.2s ease !important;
-  padding: 4px !important;
+  padding: 6px !important;
   box-shadow: none !important;
   min-width: auto !important;
   min-height: auto !important;
   width: auto !important;
   height: auto !important;
+  z-index: 5 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }
 
 .password-toggle:hover {
@@ -3981,6 +3989,8 @@ textarea:focus {
   z-index: 10000;
   backdrop-filter: blur(8px);
   animation: fadeIn 0.3s ease;
+  margin: 0;
+  padding: 0;
 }
 
 @keyframes fadeIn {
@@ -4002,6 +4012,8 @@ textarea:focus {
   max-width: 500px;
   width: 90%;
   animation: slideInScale 0.4s ease;
+  margin: 0 auto;
+  position: relative;
 }
 
 @keyframes slideInScale {
@@ -4041,6 +4053,29 @@ textarea:focus {
   50% {
     transform: scale(1.05);
   }
+}
+
+.popup-content {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.popup-content::before,
+.popup-content::after {
+  border: none !important;
+  background: none !important;
+  content: none !important;
+}
+
+.welcome-popup .popup-content {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 .popup-content h2 {
@@ -5615,7 +5650,9 @@ textarea:focus {
 
 .filter-icon {
   position: absolute;
-  left: 10px;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
   font-size: 16px;
   pointer-events: none;
   z-index: 10;
@@ -5628,7 +5665,7 @@ textarea:focus {
 
 .modern-filter-select {
   width: 100%;
-  padding: 10px 36px 10px 12px;
+  padding: 10px 36px 10px 40px;
   border: 2px solid #e9ecef;
   border-radius: 8px;
   font-size: 14px;

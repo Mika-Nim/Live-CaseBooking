@@ -15,12 +15,12 @@ import SimplifiedEmailConfig from './components/SimplifiedEmailConfig';
 import LogoutConfirmation from './components/LogoutConfirmation';
 import SSOCallback from './components/SSOCallback';
 import { User, CaseBooking } from './types';
-import { getCurrentUser, logout } from './utils/auth';
 import { hasPermission, PERMISSION_ACTIONS } from './utils/permissions';
 import { initializeCodeTables } from './utils/codeTable';
 import { SoundProvider, useSound } from './contexts/SoundContext';
 import { NotificationProvider, useNotifications } from './contexts/NotificationContext';
 import { ToastProvider, useToast } from './components/ToastContainer';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import NotificationBell from './components/NotificationBell';
 import Settings from './components/Settings';
 import StatusLegend from './components/StatusLegend';
@@ -31,7 +31,7 @@ import './components/AuditLogs.css';
 type ActivePage = 'booking' | 'cases' | 'process' | 'users' | 'sets' | 'reports' | 'calendar' | 'permissions' | 'codetables' | 'audit-logs' | 'email-config';
 
 const AppContent: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, isAuthenticated, logout } = useAuth();
   const [activePage, setActivePage] = useState<ActivePage>('booking');
   const [processingCase, setProcessingCase] = useState<CaseBooking | null>(null);
   const [showWelcomePopup, setShowWelcomePopup] = useState(false);
@@ -49,11 +49,6 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     // Initialize code tables first
     initializeCodeTables();
-    
-    const currentUser = getCurrentUser();
-    if (currentUser) {
-      setUser(currentUser);
-    }
   }, []);
 
   // Close admin panel when clicking outside
@@ -79,7 +74,6 @@ const AppContent: React.FC = () => {
   }
 
   const handleLogin = (loggedInUser: User) => {
-    setUser(loggedInUser);
     setShowWelcomePopup(true);
     playSound.success();
     showSuccess('Welcome back!', `You're now logged in as ${loggedInUser.name}`);
@@ -94,9 +88,8 @@ const AppContent: React.FC = () => {
     setShowLogoutConfirmation(true);
   };
 
-  const confirmLogout = () => {
-    logout();
-    setUser(null);
+  const confirmLogout = async () => {
+    await logout();
     setActivePage('booking');
     setProcessingCase(null);
     setShowLogoutConfirmation(false);
@@ -163,7 +156,7 @@ const AppContent: React.FC = () => {
     playSound.click();
   };
 
-  if (!user) {
+  if (!isAuthenticated || !user) {
     return <Login onLogin={handleLogin} />;
   }
 
@@ -448,13 +441,15 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <SoundProvider>
-      <NotificationProvider>
-        <ToastProvider>
-          <AppContent />
-        </ToastProvider>
-      </NotificationProvider>
-    </SoundProvider>
+    <AuthProvider>
+      <SoundProvider>
+        <NotificationProvider>
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
+        </NotificationProvider>
+      </SoundProvider>
+    </AuthProvider>
   );
 };
 

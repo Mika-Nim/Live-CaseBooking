@@ -3,7 +3,7 @@
  * Reduces code duplication and improves performance
  */
 
-import { CaseBooking, CaseStatus, StatusHistory } from '../types';
+import { CaseBooking, CaseStatus } from '../types';
 import userService from './userService';
 import notificationService from './notificationService';
 import { caseOperations } from './database';
@@ -198,6 +198,71 @@ class CaseService {
       return true;
     } catch (error) {
       console.error('Error deleting case:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Amend case
+   */
+  async amendCase(
+    caseId: string,
+    amendmentData: Partial<CaseBooking>,
+    amendedBy: string,
+    isAdmin: boolean = false
+  ): Promise<boolean> {
+    try {
+      const existingCase = await this.getCaseById(caseId);
+      if (!existingCase) {
+        console.error('Case not found for amendment:', caseId);
+        return false;
+      }
+
+      const currentUser = userService.getCurrentUser();
+      if (!currentUser) {
+        console.error('No current user found');
+        return false;
+      }
+
+      // Track changes for history
+      const changes = [];
+      for (const [field, newValue] of Object.entries(amendmentData)) {
+        const oldValue = existingCase[field as keyof CaseBooking];
+        if (oldValue !== newValue && newValue !== undefined) {
+          changes.push({
+            field,
+            oldValue: oldValue?.toString() || '',
+            newValue: newValue?.toString() || ''
+          });
+        }
+      }
+
+      if (changes.length === 0) {
+        console.log('No changes detected for amendment');
+        return true;
+      }
+
+      // Update the case
+      const updatedCase = { ...existingCase, ...amendmentData };
+      await caseOperations.update(caseId, updatedCase);
+
+      // Add amendment history
+      await caseOperations.addAmendment(caseId, currentUser.id, changes, 'Case amended');
+
+      // Update cache
+      this.casesCache.set(caseId, updatedCase);
+
+      // Send notification
+      notificationService.addNotification({
+        title: 'Case Amended',
+        message: `Case ${existingCase.caseReferenceNumber} has been amended by ${currentUser.name}`,
+        type: 'success',
+        timestamp: new Date().toISOString()
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error amending case:', error);
       return false;
     }
   }
