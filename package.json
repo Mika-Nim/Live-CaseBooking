@@ -1,6 +1,6 @@
 {
   "name": "case-booking-app",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "homepage": "https://mika-nim.github.io/Live-CaseBooking",
   "private": true,
   "dependencies": {
@@ -35,7 +35,22 @@
     "claude-overview": "node scripts/claude-speed-optimizer.js --overview-only",
     "claude-analyze": "find src -name '*.tsx' -o -name '*.ts' -o -name '*.css' | xargs wc -c | sort -nr",
     "claude-clean": "rm -rf .claude-optimized",
-    "claude-report": "cat .claude-optimized/size-report.md 2>/dev/null || echo 'Run npm run claude-optimize first'"
+    "claude-report": "cat .claude-optimized/size-report.md 2>/dev/null || echo 'Run npm run claude-optimize first'",
+    "dev:start": "chmod +x scripts/dev-start.sh && ./scripts/dev-start.sh",
+    "dev:build": "chmod +x scripts/dev-build.sh && ./scripts/dev-build.sh",
+    "dev:watch": "chmod +x scripts/dev-watch.sh && ./scripts/dev-watch.sh",
+    "prod:build": "chmod +x scripts/prod-build.sh && ./scripts/prod-build.sh",
+    "prod:deploy": "chmod +x scripts/prod-deploy.sh && ./scripts/prod-deploy.sh",
+    "prod:serve": "chmod +x scripts/prod-serve.sh && ./scripts/prod-serve.sh",
+    "kill:port": "chmod +x scripts/kill-port.sh && ./scripts/kill-port.sh",
+    "git:dev": "chmod +x scripts/git-dev.sh && ./scripts/git-dev.sh",
+    "git:prod": "chmod +x scripts/git-prod.sh && ./scripts/git-prod.sh",
+    "version:patch": "npm version patch && git push --tags",
+    "version:minor": "npm version minor && git push --tags",
+    "version:major": "npm version major && git push --tags",
+    "deploy:production": "chmod +x scripts/deploy-production.sh && ./scripts/deploy-production.sh",
+    "health:check": "chmod +x scripts/health-check.sh && ./scripts/health-check.sh",
+    "clean": "rm -rf node_modules build .claude-optimized && npm cache clean --force"
   },
   "eslintConfig": {
     "extends": [
