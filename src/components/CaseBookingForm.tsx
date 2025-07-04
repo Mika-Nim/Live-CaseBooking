@@ -51,7 +51,7 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
   useEffect(() => {
     initializeCodeTables();
     const currentUser = getCurrentUser();
-    const userCountry = currentUser?.selectedCountry || currentUser?.countries?.[0];
+    const userCountry = currentUser?.selectedCountry || 'Singapore';
     console.log('🏥 CaseBookingForm - Current User:', currentUser);
     console.log('🌍 CaseBookingForm - User Country:', userCountry);
     
@@ -78,7 +78,7 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
     
     // Try to get from categorized sets first
     const currentUser = getCurrentUser();
-    const userCountry = currentUser?.selectedCountry || currentUser?.countries?.[0];
+    const userCountry = currentUser?.selectedCountry || 'Singapore';
     const categorizedSets = getCategorizedSets(userCountry);
     if (categorizedSets[formData.procedureType]?.surgerySets?.length > 0) {
       return categorizedSets[formData.procedureType].surgerySets.sort();
@@ -96,7 +96,7 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
     
     // Try to get from categorized sets first
     const currentUser = getCurrentUser();
-    const userCountry = currentUser?.selectedCountry || currentUser?.countries?.[0];
+    const userCountry = currentUser?.selectedCountry || 'Singapore';
     const categorizedSets = getCategorizedSets(userCountry);
     if (categorizedSets[formData.procedureType]?.implantBoxes?.length > 0) {
       return categorizedSets[formData.procedureType].implantBoxes.sort();
@@ -224,15 +224,18 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
       country: currentUser.selectedCountry || 'Singapore'
     };
 
+    // Always save to localStorage first (guaranteed success)
+    saveCase(newCase);
+    console.log('✅ Case saved to localStorage:', newCase.caseReferenceNumber);
+    
+    // Attempt to save to Supabase, but don't fail if it doesn't work
     try {
-      // Save to both localStorage (for BookingCalendar compatibility) and Supabase (for CasesList)
-      saveCase(newCase); // Keep localStorage for BookingCalendar
-      await caseService.saveCase(newCase); // Add Supabase for CasesList
-      console.log('✅ Case saved to both localStorage and Supabase:', newCase.caseReferenceNumber);
+      await caseService.saveCase(newCase);
+      console.log('✅ Case also saved to Supabase:', newCase.caseReferenceNumber);
     } catch (error) {
-      console.error('❌ Error saving case to Supabase:', error);
-      showError('Failed to save case. Please try again.');
-      return;
+      console.error('⚠️ Failed to save case to Supabase (saved to localStorage only):', error);
+      showError('Case saved locally but failed to sync online. It will be synced automatically later.');
+      // Don't return here - continue with the success flow since we have the case in localStorage
     }
     
     // Send email notification for new case

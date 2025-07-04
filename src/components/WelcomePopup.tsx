@@ -19,7 +19,7 @@ const WelcomePopup: React.FC<WelcomePopupProps> = ({ user, onClose }) => {
           onClose();
           return 0;
         }
-        return prev - (100 / 30); // 30 steps for 3 seconds (100ms intervals)
+        return prev - (100 / 50); // 50 steps for 5 seconds (100ms intervals)
       });
     }, 100);
 
@@ -62,7 +62,7 @@ const WelcomePopup: React.FC<WelcomePopupProps> = ({ user, onClose }) => {
             </p>
           </div>
           <div className="progress-container">
-            <p>This popup will automatically close in 3 seconds</p>
+            <p>This popup will automatically close in 5 seconds</p>
             <div className="progress-bar">
               <div 
                 className="progress-fill" 

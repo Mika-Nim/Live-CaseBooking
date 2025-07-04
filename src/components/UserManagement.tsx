@@ -534,7 +534,7 @@ const UserManagement: React.FC = () => {
                   id="newEmail"
                   value={newUser.email}
                   onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="user@example.com (required)"
+                  placeholder="user@transmedicgroup.com (required)"
                   required
                 />
               </div>

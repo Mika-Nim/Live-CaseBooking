@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { CaseBooking, CaseStatus, FilterOptions } from '../types';
 import { caseService } from '../services';
+import { getCases, migrateLocalStorageCasesToSupabase } from '../utils/storage';
 
 interface UseCasesOptions {
   autoRefresh?: boolean;
@@ -24,10 +25,25 @@ export const useCases = (options: UseCasesOptions = {}) => {
     try {
       setLoading(true);
       setError(null);
-      const casesData = await caseService.getAllCases(forceRefresh);
-      console.log('📋 useCases loaded cases from caseService:', casesData.length, 'cases');
-      console.log('📋 Cases data:', casesData);
-      setCases(casesData);
+      
+      // First, attempt to migrate any localStorage cases to Supabase
+      await migrateLocalStorageCasesToSupabase();
+      
+      // Load cases from Supabase
+      const supabaseCases = await caseService.getAllCases(forceRefresh);
+      console.log('📋 useCases loaded', supabaseCases.length, 'cases from Supabase');
+      
+      // Also load any remaining cases from localStorage (in case migration failed)
+      const localStorageCases = getCases();
+      console.log('📋 useCases found', localStorageCases.length, 'cases still in localStorage');
+      
+      // Combine and deduplicate cases (Supabase takes priority)
+      const supabaseRefs = new Set(supabaseCases.map(c => c.caseReferenceNumber));
+      const uniqueLocalCases = localStorageCases.filter(c => !supabaseRefs.has(c.caseReferenceNumber));
+      const allCases = [...supabaseCases, ...uniqueLocalCases];
+      
+      console.log('📋 useCases total combined cases:', allCases.length);
+      setCases(allCases);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cases');
       console.error('📋 Error loading cases in useCases:', err);

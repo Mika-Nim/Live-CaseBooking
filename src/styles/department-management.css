@@ -731,7 +731,6 @@
   max-height: 80vh;
   overflow: hidden;
   animation: slideIn 0.3s ease;
-  margin: 1rem;
   width: 100%;
 }
 

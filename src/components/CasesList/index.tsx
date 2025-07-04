@@ -12,6 +12,7 @@ import { useModal } from '../../hooks/useModal';
 import { USER_ROLES } from '../../constants/permissions';
 import { userHasDepartmentAccess } from '../../utils/departmentUtils';
 import { useCases } from '../../hooks/useCases';
+import { getHospitalsForCountry, getHospitals } from '../../utils/codeTable';
 
 const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highlightedCaseId, onClearHighlight, onNavigateToPermissions }) => {
   const { addNotification } = useNotifications();
@@ -184,11 +185,21 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       .sort();
     setAvailableSubmitters(uniqueSubmitters);
 
-    // Extract unique hospitals from all cases
-    const uniqueHospitals = Array.from(new Set(cases.map(caseItem => caseItem.hospital)))
-      .filter(hospital => hospital && hospital.trim())
-      .sort();
-    setAvailableHospitals(uniqueHospitals);
+    // Use country-specific hospitals instead of extracting from all cases
+    const user = getCurrentUser();
+    const userCountry = user?.selectedCountry || 'Singapore';
+    console.log('🏥 CasesList - Loading hospitals for country:', userCountry);
+    
+    if (userCountry) {
+      const countryHospitals = getHospitalsForCountry(userCountry);
+      console.log('🏥 CasesList - Country-specific hospitals:', countryHospitals);
+      setAvailableHospitals(countryHospitals.sort());
+    } else {
+      // Fallback to global hospitals if no country selected
+      const globalHospitals = getHospitals();
+      console.log('🏥 CasesList - Global hospitals fallback:', globalHospitals);
+      setAvailableHospitals(globalHospitals.sort());
+    }
   }, [cases]);
 
   const handleFilterChange = async (field: keyof FilterOptions, value: string) => {

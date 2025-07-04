@@ -83,7 +83,12 @@
       "Bash(grep:*)",
       "Bash(cat:*)",
       "Bash(sed:*)",
-      "Bash(timeout 5s npm start)"
+      "Bash(timeout 5s npm start)",
+      "Bash(echo:*)",
+      "Bash(bash:*)",
+      "Bash(gh repo view:*)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": []
   }

@@ -18,23 +18,45 @@ export const migrateLocalStorageCasesToSupabase = async (): Promise<void> => {
       return;
     }
     
+    // Track migration success
+    const successfulMigrations: string[] = [];
+    const failedMigrations: string[] = [];
+    
     // Migrate each case to Supabase
     for (const caseData of localCases) {
       try {
         console.log('🔄 Migrating case:', caseData.caseReferenceNumber);
         await caseService.saveCase(caseData);
+        successfulMigrations.push(caseData.caseReferenceNumber);
         console.log('✅ Migrated case:', caseData.caseReferenceNumber);
       } catch (error) {
+        failedMigrations.push(caseData.caseReferenceNumber);
         console.error('❌ Failed to migrate case:', caseData.caseReferenceNumber, error);
       }
     }
     
-    // Clear localStorage after successful migration
-    console.log('🗑️ Clearing localStorage cases after migration');
-    localStorage.removeItem(CASES_KEY);
-    localStorage.removeItem(CASE_COUNTER_KEY);
+    console.log(`📊 Migration summary: ${successfulMigrations.length} successful, ${failedMigrations.length} failed`);
     
-    console.log('✅ Migration completed successfully');
+    // Only clear localStorage if ALL cases migrated successfully
+    if (failedMigrations.length === 0) {
+      console.log('🗑️ All cases migrated successfully, clearing localStorage');
+      localStorage.removeItem(CASES_KEY);
+      localStorage.removeItem(CASE_COUNTER_KEY);
+      console.log('✅ Migration completed successfully');
+    } else {
+      console.warn('⚠️ Some cases failed to migrate, keeping localStorage data');
+      console.warn('❌ Failed cases:', failedMigrations);
+      
+      // Remove only the successfully migrated cases from localStorage
+      const remainingCases = localCases.filter(caseData => 
+        !successfulMigrations.includes(caseData.caseReferenceNumber)
+      );
+      
+      if (remainingCases.length > 0) {
+        localStorage.setItem(CASES_KEY, JSON.stringify(remainingCases));
+        console.log(`📝 Kept ${remainingCases.length} failed cases in localStorage`);
+      }
+    }
   } catch (error) {
     console.error('❌ Migration failed:', error);
   }

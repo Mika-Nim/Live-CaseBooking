@@ -6,9 +6,11 @@
 import React, { useState, useEffect } from 'react';
 import { AmendmentFormProps } from './types';
 import { getAllProcedureTypes } from '../../utils/storage';
-import { getDepartments } from '../../utils/codeTable';
+import { getDepartments, getHospitalsForCountry, getHospitals } from '../../utils/codeTable';
+import { getCurrentUser } from '../../utils/auth';
 import TimePicker from '../common/TimePicker';
 import FilterDatePicker from '../FilterDatePicker';
+import SearchableDropdown from '../SearchableDropdown';
 
 const AmendmentForm: React.FC<AmendmentFormProps> = ({
   caseItem,
@@ -31,15 +33,32 @@ const AmendmentForm: React.FC<AmendmentFormProps> = ({
 
   const [departments, setDepartments] = useState<string[]>([]);
   const [procedureTypes, setProcedureTypes] = useState<string[]>([]);
+  const [availableHospitals, setAvailableHospitals] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    // Load departments and procedure types
+    // Load departments, procedure types, and hospitals
     const loadData = async () => {
       const depts = getDepartments();
       const procedures = getAllProcedureTypes();
       setDepartments(depts);
       setProcedureTypes(procedures);
+      
+      // Load country-specific hospitals
+      const currentUser = getCurrentUser();
+      const userCountry = currentUser?.selectedCountry || 'Singapore';
+      console.log('🏥 AmendmentForm - Loading hospitals for country:', userCountry);
+      
+      if (userCountry) {
+        const countryHospitals = getHospitalsForCountry(userCountry);
+        console.log('🏥 AmendmentForm - Country-specific hospitals:', countryHospitals);
+        setAvailableHospitals(countryHospitals.sort());
+      } else {
+        // Fallback to global hospitals if no country selected
+        const globalHospitals = getHospitals();
+        console.log('🏥 AmendmentForm - Global hospitals fallback:', globalHospitals);
+        setAvailableHospitals(globalHospitals.sort());
+      }
     };
     loadData();
   }, []);
@@ -107,12 +126,12 @@ const AmendmentForm: React.FC<AmendmentFormProps> = ({
             {/* Hospital */}
             <div className="form-group">
               <label className="required">Hospital</label>
-              <input
-                type="text"
+              <SearchableDropdown
+                options={availableHospitals}
                 value={formData.hospital}
-                onChange={(e) => handleInputChange('hospital', e.target.value)}
+                onChange={(value) => handleInputChange('hospital', value)}
+                placeholder="Select hospital"
                 className={errors.hospital ? 'error' : ''}
-                placeholder="Enter hospital name"
               />
               {errors.hospital && <span className="error-text">{errors.hospital}</span>}
             </div>

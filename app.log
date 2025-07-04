@@ -1,0 +1,5 @@
+
+> case-booking-app@1.2.1 start
+> GENERATE_SOURCEMAP=false react-scripts start
+
+Something is already running on port 3000.

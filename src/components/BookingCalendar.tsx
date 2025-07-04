@@ -49,12 +49,12 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onCaseClick }) => {
     
     // Initialize selected country for Admin users
     if (user?.role === 'admin' && !selectedCountry) {
-      const defaultCountry = user?.selectedCountry || user?.countries?.[0] || countries[0];
+      const defaultCountry = user?.selectedCountry || 'Singapore';
       setSelectedCountry(defaultCountry);
     }
     
     // Get departments for the active country from Code Table Setup
-    const country = isAdmin && selectedCountry ? selectedCountry : (user?.selectedCountry || user?.countries?.[0]);
+    const country = isAdmin && selectedCountry ? selectedCountry : (user?.selectedCountry || 'Singapore');
     if (country) {
       // Load country-specific departments from Code Table Setup
       const countryDepartments = getCodeTables(country);
@@ -86,18 +86,29 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onCaseClick }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountry]); // isAdmin is derived from currentUser which is already handled
 
-  // Load and filter cases from Supabase whenever active country changes
+  // Load and filter cases from both localStorage and Supabase
   useEffect(() => {
     const loadCases = async () => {
       try {
-        console.log('📅 BookingCalendar: Loading cases from Supabase');
+        console.log('📅 BookingCalendar: Loading cases from both localStorage and Supabase');
         
-        // First, migrate any localStorage cases to Supabase
+        // First, attempt to migrate any localStorage cases to Supabase
         await migrateLocalStorageCasesToSupabase();
         
-        // Then load all cases from Supabase
-        const allCases = await caseService.getAllCases(true); // Force refresh
-        console.log('📅 BookingCalendar: Loaded', allCases.length, 'cases from Supabase');
+        // Load cases from Supabase
+        const supabaseCases = await caseService.getAllCases(true); // Force refresh
+        console.log('📅 BookingCalendar: Loaded', supabaseCases.length, 'cases from Supabase');
+        
+        // Also load any remaining cases from localStorage (in case migration failed)
+        const localStorageCases = getCases();
+        console.log('📅 BookingCalendar: Found', localStorageCases.length, 'cases still in localStorage');
+        
+        // Combine and deduplicate cases (Supabase takes priority)
+        const supabaseRefs = new Set(supabaseCases.map(c => c.caseReferenceNumber));
+        const uniqueLocalCases = localStorageCases.filter(c => !supabaseRefs.has(c.caseReferenceNumber));
+        const allCases = [...supabaseCases, ...uniqueLocalCases];
+        
+        console.log('📅 BookingCalendar: Total combined cases:', allCases.length);
         
         const filteredCases = allCases.filter(caseItem => {
           // Filter by active country

@@ -87,7 +87,7 @@ const CodeTableSetup: React.FC<CodeTableSetupProps> = () => {
         
         // Set initial country if not already set
         if (!selectedCountry && currentUser) {
-          const userCountry = currentUser.selectedCountry || currentUser.countries?.[0] || countries[0];
+          const userCountry = currentUser.selectedCountry || 'Singapore';
           if (countries.includes(userCountry)) {
             setSelectedCountry(userCountry);
           } else if (countries.length > 0) {
