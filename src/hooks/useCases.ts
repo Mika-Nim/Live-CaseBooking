@@ -20,14 +20,17 @@ export const useCases = (options: UseCasesOptions = {}) => {
   const [error, setError] = useState<string | null>(null);
 
   const loadCases = useCallback(async (forceRefresh = false) => {
+    console.log('📋 useCases.loadCases called with forceRefresh:', forceRefresh);
     try {
       setLoading(true);
       setError(null);
       const casesData = await caseService.getAllCases(forceRefresh);
+      console.log('📋 useCases loaded cases from caseService:', casesData.length, 'cases');
+      console.log('📋 Cases data:', casesData);
       setCases(casesData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cases');
-      console.error('Error loading cases:', err);
+      console.error('📋 Error loading cases in useCases:', err);
     } finally {
       setLoading(false);
     }

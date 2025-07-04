@@ -6,8 +6,9 @@ import {
   getCountries
 } from '../utils/codeTable';
 import { getCurrentUser } from '../utils/auth';
-import { getCases } from '../utils/storage';
+import { getCases, migrateLocalStorageCasesToSupabase } from '../utils/storage';
 import { CaseBooking, COUNTRIES } from '../types';
+import { caseService } from '../services';
 import SearchableDropdown from './SearchableDropdown';
 import { getMonthYearDisplay } from '../utils/dateFormat';
 import { getStatusColor } from './CasesList/utils';
@@ -85,29 +86,48 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onCaseClick }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountry]); // isAdmin is derived from currentUser which is already handled
 
-  // Load and filter cases whenever active country changes
+  // Load and filter cases from Supabase whenever active country changes
   useEffect(() => {
-    const allCases = getCases();
-    const filteredCases = allCases.filter(caseItem => {
-      // Filter by active country
-      if (activeCountry && caseItem.country !== activeCountry) {
-        return false;
+    const loadCases = async () => {
+      try {
+        console.log('📅 BookingCalendar: Loading cases from Supabase');
+        
+        // First, migrate any localStorage cases to Supabase
+        await migrateLocalStorageCasesToSupabase();
+        
+        // Then load all cases from Supabase
+        const allCases = await caseService.getAllCases(true); // Force refresh
+        console.log('📅 BookingCalendar: Loaded', allCases.length, 'cases from Supabase');
+        
+        const filteredCases = allCases.filter(caseItem => {
+          // Filter by active country
+          if (activeCountry && caseItem.country !== activeCountry) {
+            return false;
+          }
+          
+          // Filter by user's assigned departments (excluding admin/IT/operations/operations-manager)
+          if (currentUser?.role !== 'admin' && 
+              currentUser?.role !== 'it' && 
+              currentUser?.role !== 'operations' && 
+              currentUser?.role !== 'operations-manager' && 
+              currentUser?.role !== 'operations-manager') {
+            if (currentUser?.departments && !currentUser.departments.includes(caseItem.department)) {
+              return false;
+            }
+          }
+          
+          return true;
+        });
+        
+        console.log('📅 BookingCalendar: Filtered to', filteredCases.length, 'cases for display');
+        setCases(filteredCases);
+      } catch (error) {
+        console.error('📅 BookingCalendar: Error loading cases:', error);
+        setCases([]);
       }
-      
-      // Filter by user's assigned departments (excluding admin/IT/operations/operations-manager)
-      if (currentUser?.role !== 'admin' && 
-          currentUser?.role !== 'it' && 
-          currentUser?.role !== 'operations' && 
-          currentUser?.role !== 'operations-manager' && 
-          currentUser?.role !== 'operations-manager') {
-        if (currentUser?.departments && !currentUser.departments.includes(caseItem.department)) {
-          return false;
-        }
-      }
-      
-      return true;
-    });
-    setCases(filteredCases);
+    };
+    
+    loadCases();
   }, [activeCountry, currentUser]);
 
   // Close date picker when clicking outside

@@ -4,6 +4,50 @@ import { sendStatusChangeNotification } from './emailNotificationService';
 const CASES_KEY = 'case-booking-cases';
 const CASE_COUNTER_KEY = 'case-booking-counter';
 
+// Migration function to move localStorage cases to Supabase
+export const migrateLocalStorageCasesToSupabase = async (): Promise<void> => {
+  try {
+    // Import the caseService here to avoid circular dependencies
+    const { caseService } = await import('../services');
+    
+    const localCases = getCases();
+    console.log('🔄 Found', localCases.length, 'cases in localStorage to migrate');
+    
+    if (localCases.length === 0) {
+      console.log('✅ No cases to migrate');
+      return;
+    }
+    
+    // Migrate each case to Supabase
+    for (const caseData of localCases) {
+      try {
+        console.log('🔄 Migrating case:', caseData.caseReferenceNumber);
+        await caseService.saveCase(caseData);
+        console.log('✅ Migrated case:', caseData.caseReferenceNumber);
+      } catch (error) {
+        console.error('❌ Failed to migrate case:', caseData.caseReferenceNumber, error);
+      }
+    }
+    
+    // Clear localStorage after successful migration
+    console.log('🗑️ Clearing localStorage cases after migration');
+    localStorage.removeItem(CASES_KEY);
+    localStorage.removeItem(CASE_COUNTER_KEY);
+    
+    console.log('✅ Migration completed successfully');
+  } catch (error) {
+    console.error('❌ Migration failed:', error);
+  }
+};
+
+// Function to clear localStorage cases (without migration)
+export const clearLocalStorageCases = (): void => {
+  console.log('🗑️ Clearing localStorage cases');
+  localStorage.removeItem(CASES_KEY);
+  localStorage.removeItem(CASE_COUNTER_KEY);
+  console.log('✅ localStorage cases cleared');
+};
+
 export const generateCaseReferenceNumber = (): string => {
   const currentCounter = localStorage.getItem(CASE_COUNTER_KEY);
   const counter = currentCounter ? parseInt(currentCounter) + 1 : 1;

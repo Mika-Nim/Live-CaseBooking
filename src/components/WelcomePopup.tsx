@@ -56,6 +56,11 @@ const WelcomePopup: React.FC<WelcomePopupProps> = ({ user, onClose }) => {
         <div className="popup-content">
           <h2>Welcome to Transmedic Case Booking</h2>
           <p>You have successfully logged in to {user.selectedCountry || 'the system'}.</p>
+          <div className="security-notice">
+            <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '16px' }}>
+              🔒 For your security, automatic logout will occur after 15 minutes of inactivity.
+            </p>
+          </div>
           <div className="progress-container">
             <p>This popup will automatically close in 3 seconds</p>
             <div className="progress-bar">

@@ -24,7 +24,7 @@ const OAUTH_PROVIDERS: Record<'google' | 'microsoft', OAuthProvider> = {
     tokenUrl: 'https://oauth2.googleapis.com/token',
     userInfoUrl: 'https://www.googleapis.com/oauth2/v2/userinfo',
     config: {
-      clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID || '',
+      clientId: process.env.REACT_APP_GOOGLE_CLIENT_ID || 'NOT_CONFIGURED',
       scopes: [
         'https://www.googleapis.com/auth/gmail.send',
         'https://www.googleapis.com/auth/userinfo.email',
@@ -39,7 +39,7 @@ const OAUTH_PROVIDERS: Record<'google' | 'microsoft', OAuthProvider> = {
     tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
     userInfoUrl: 'https://graph.microsoft.com/v1.0/me',
     config: {
-      clientId: process.env.REACT_APP_MICROSOFT_CLIENT_ID || '',
+      clientId: process.env.REACT_APP_MICROSOFT_CLIENT_ID || 'NOT_CONFIGURED',
       scopes: [
         'https://graph.microsoft.com/Mail.Send',
         'https://graph.microsoft.com/User.Read',
@@ -113,6 +113,17 @@ class SimplifiedOAuthManager {
   constructor(provider: 'google' | 'microsoft') {
     this.provider = provider;
     this.config = OAUTH_PROVIDERS[provider];
+  }
+
+  /**
+   * Check if OAuth is properly configured for this provider
+   */
+  isConfigured(): boolean {
+    const clientId = this.config.config.clientId;
+    return !!(clientId && 
+              clientId !== 'NOT_CONFIGURED' && 
+              !clientId.includes('your-dev-') && 
+              !clientId.includes('your-prod-'));
   }
 
   /**
@@ -469,6 +480,13 @@ export const authenticateWithPopup = async (
 ): Promise<{ tokens: AuthTokens; userInfo: UserInfo }> => {
   console.log(`[OAuth] Creating OAuth manager for ${provider}`);
   const oauth = createOAuthManager(provider);
+  
+  // Check if OAuth is properly configured
+  if (!oauth.isConfigured()) {
+    const providerName = provider === 'google' ? 'Google' : 'Microsoft';
+    const envVar = provider === 'google' ? 'REACT_APP_GOOGLE_CLIENT_ID' : 'REACT_APP_MICROSOFT_CLIENT_ID';
+    throw new Error(`${providerName} OAuth is not configured. Please set the ${envVar} environment variable with a valid client ID.`);
+  }
   
   try {
     // Generate auth URL with PKCE (async operation)

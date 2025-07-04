@@ -253,12 +253,12 @@ const UserManagement: React.FC = () => {
     e.preventDefault();
     setError('');
 
-    if (!newUser.username || !newUser.password || !newUser.name) {
-      setError('Username, password, and full name are required');
+    if (!newUser.username || !newUser.password || !newUser.name || !newUser.email) {
+      setError('Username, password, email, and full name are required');
       return;
     }
 
-    if (newUser.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
       setError('Please enter a valid email address');
       return;
     }
@@ -528,13 +528,14 @@ const UserManagement: React.FC = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="newEmail">Email Address</label>
+                <label htmlFor="newEmail" className="required">Email Address</label>
                 <input
                   type="email"
                   id="newEmail"
                   value={newUser.email}
                   onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="user@example.com"
+                  placeholder="user@example.com (required)"
+                  required
                 />
               </div>
             </div>
@@ -828,8 +829,8 @@ const UserManagement: React.FC = () => {
                   <td>{user.name}</td>
                   <td>{user.email || 'N/A'}</td>
                   <td>
-                    <span className={`badge badge-role badge-role-${user.role}`}>
-                      {user.role.replace(/-/g, ' ').toUpperCase()}
+                    <span className={`badge badge-role badge-role-${user.role || ''}`}>
+                      {user.role ? user.role.replace(/-/g, ' ').toUpperCase() : 'Unknown'}
                     </span>
                   </td>
                   <td className="department-column">

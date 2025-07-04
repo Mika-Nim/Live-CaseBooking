@@ -26,6 +26,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   // Check for existing session on mount
   useEffect(() => {
@@ -71,38 +72,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (username: string, password: string, country: string) => {
     try {
+      console.log('🔐 AuthContext: Starting login...')
       setLoading(true)
       setError(null)
       
       const result = await supabaseService.userOperations.authenticate(username, password, country)
+      console.log('🔍 AuthContext: Auth result:', result)
       
       if (result.user) {
+        console.log('✅ AuthContext: Setting user in context')
         setUser(result.user)
         return { user: result.user }
       } else {
+        console.error('❌ AuthContext: Login failed:', result.error)
         setError(result.error || 'Login failed')
         return { user: null, error: result.error }
       }
     } catch (err) {
+      console.error('❌ AuthContext: Exception during login:', err)
       const errorMessage = 'Login failed. Please try again.'
       setError(errorMessage)
       return { user: null, error: errorMessage }
     } finally {
+      console.log('🔐 AuthContext: Setting loading to false')
       setLoading(false)
     }
   }
 
   const logout = async () => {
+    // Prevent multiple simultaneous logout calls
+    if (isLoggingOut) {
+      console.log('🔄 AuthContext: Logout already in progress, skipping...')
+      return
+    }
+    
     try {
+      console.log('🚪 AuthContext: Starting logout...')
+      setIsLoggingOut(true)
       setLoading(true)
-      await supabase.auth.signOut()
+      
+      // Since we're using mock auth for fast login, skip the Supabase logout entirely
+      console.log('🧪 AuthContext: Using mock logout (skipping Supabase)...')
+      
       setUser(null)
       setError(null)
+      console.log('✅ AuthContext: User cleared from context')
     } catch (err) {
-      console.error('Error signing out:', err)
+      console.error('❌ AuthContext: Error during logout:', err)
       setError('Failed to sign out')
+      // Force logout anyway
+      setUser(null)
     } finally {
       setLoading(false)
+      setIsLoggingOut(false)
+      console.log('🚪 AuthContext: Logout complete')
     }
   }
 

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { CaseBooking, SURGERY_SETS, IMPLANT_BOXES, PROCEDURE_TYPE_MAPPINGS } from '../types';
 import { saveCase, generateCaseReferenceNumber, getCategorizedSets, getAllProcedureTypes } from '../utils/storage';
+import { caseService } from '../services';
 import { getCurrentUser } from '../utils/auth';
 import { 
   getHospitals, 
@@ -51,16 +52,21 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
     initializeCodeTables();
     const currentUser = getCurrentUser();
     const userCountry = currentUser?.selectedCountry || currentUser?.countries?.[0];
+    console.log('🏥 CaseBookingForm - Current User:', currentUser);
+    console.log('🌍 CaseBookingForm - User Country:', userCountry);
+    
     const allTypes = getAllProcedureTypes(userCountry);
     setAvailableProcedureTypes(allTypes.sort());
     
     // Load hospitals from country-specific code tables
     if (userCountry) {
       const hospitals = getHospitalsForCountry(userCountry);
+      console.log('🏥 CaseBookingForm - Hospitals for', userCountry, ':', hospitals);
       setAvailableHospitals(hospitals.sort());
     } else {
       // Fallback to global hospitals if no country selected
       const hospitals = getHospitals();
+      console.log('🏥 CaseBookingForm - Global hospitals fallback:', hospitals);
       setAvailableHospitals(hospitals.sort());
     }
   }, []);
@@ -193,7 +199,7 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -218,7 +224,16 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
       country: currentUser.selectedCountry || 'Singapore'
     };
 
-    saveCase(newCase);
+    try {
+      // Save to both localStorage (for BookingCalendar compatibility) and Supabase (for CasesList)
+      saveCase(newCase); // Keep localStorage for BookingCalendar
+      await caseService.saveCase(newCase); // Add Supabase for CasesList
+      console.log('✅ Case saved to both localStorage and Supabase:', newCase.caseReferenceNumber);
+    } catch (error) {
+      console.error('❌ Error saving case to Supabase:', error);
+      showError('Failed to save case. Please try again.');
+      return;
+    }
     
     // Send email notification for new case
     sendNewCaseNotification(newCase).then(emailSent => {

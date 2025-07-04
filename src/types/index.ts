@@ -21,6 +21,8 @@ export const COUNTRIES = [
   'Thailand'
 ] as const;
 
+export const DEFAULT_COUNTRY = COUNTRIES[0]; // 'Singapore'
+
 export const DEPARTMENTS = [
   'Cardiology',
   'Orthopedics', 

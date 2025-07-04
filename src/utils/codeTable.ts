@@ -10,10 +10,15 @@ export interface CodeTable {
 // Get code tables from localStorage with fallback to defaults
 export const getCodeTables = (country?: string): CodeTable[] => {
   const storageKey = country ? `codeTables-${country}` : 'codeTables';
+  console.log('🔍 getCodeTables called with country:', country, 'storageKey:', storageKey);
   const storedTables = localStorage.getItem(storageKey);
+  console.log('🔍 localStorage data found:', storedTables ? 'Yes' : 'No');
+  
   if (storedTables) {
     try {
-      return JSON.parse(storedTables);
+      const parsed = JSON.parse(storedTables);
+      console.log('🔍 Parsed localStorage tables:', parsed);
+      return parsed;
     } catch (error) {
       console.error('Error parsing code tables from localStorage:', error);
     }
@@ -23,10 +28,13 @@ export const getCodeTables = (country?: string): CodeTable[] => {
   if (country) {
     // For country-specific requests, return only country-based tables
     const defaultTables = getDefaultCodeTables(country);
+    console.log('🔍 Default tables for country', country, ':', defaultTables);
     return defaultTables.filter(table => table.id !== 'countries');
   } else {
     // For global requests, return all default tables so they can be categorized
-    return getDefaultCodeTables();
+    const defaultTables = getDefaultCodeTables();
+    console.log('🔍 Global default tables:', defaultTables);
+    return defaultTables;
   }
 };
 
@@ -75,9 +83,14 @@ export const getHospitals = (): string[] => {
 
 // Get hospitals list for a specific country
 export const getHospitalsForCountry = (country: string): string[] => {
+  console.log('🔍 getHospitalsForCountry called with country:', country);
   const countryTables = getCodeTables(country);
+  console.log('🔍 Country tables found:', countryTables);
   const hospitalTable = countryTables.find(table => table.id === 'hospitals');
-  return hospitalTable?.items || [];
+  console.log('🔍 Hospital table found:', hospitalTable);
+  const hospitals = hospitalTable?.items || [];
+  console.log('🔍 Final hospitals list:', hospitals);
+  return hospitals;
 };
 
 // Get departments list with user filtering
@@ -366,8 +379,10 @@ export const updateCodeTableItem = (tableId: string, oldItem: string, newItem: s
 
 // Get default hospitals for a specific country
 export const getDefaultHospitalsForCountry = (country?: string): string[] => {
+  console.log('🔍 getDefaultHospitalsForCountry called with country:', country);
   switch (country) {
     case 'Singapore':
+      console.log('✅ Matched Singapore case - returning Singapore hospitals');
       return [
         'Singapore General Hospital',
         'Mount Elizabeth Hospital', 
@@ -381,6 +396,7 @@ export const getDefaultHospitalsForCountry = (country?: string): string[] => {
         'Singapore National Eye Centre'
       ];
     case 'Malaysia':
+      console.log('✅ Matched Malaysia case - returning Malaysia hospitals');
       return [
         'Kuala Lumpur Hospital',
         'University Malaya Medical Centre',
@@ -442,6 +458,7 @@ export const getDefaultHospitalsForCountry = (country?: string): string[] => {
         'Ramathibodi Hospital'
       ];
     default:
+      console.log('⚠️ No match found - using default Singapore hospitals for country:', country);
       return [
         'Singapore General Hospital',
         'Mount Elizabeth Hospital', 

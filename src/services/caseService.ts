@@ -65,19 +65,24 @@ class CaseService {
    * Save case
    */
   async saveCase(caseData: CaseBooking): Promise<boolean> {
+    console.log('📁 caseService.saveCase called with:', caseData);
     try {
       const existingCase = await this.getCaseById(caseData.id);
+      console.log('📁 Existing case found:', existingCase ? 'Yes' : 'No');
       
       if (existingCase) {
+        console.log('📁 Updating existing case via caseOperations.update');
         await caseOperations.update(caseData.id, caseData);
       } else {
+        console.log('📁 Creating new case via caseOperations.create');
         await caseOperations.create(caseData);
       }
       
       this.casesCache.set(caseData.id, caseData);
+      console.log('📁 Case saved successfully to cache and Supabase');
       return true;
     } catch (error) {
-      console.error('Error saving case:', error);
+      console.error('📁 Error saving case:', error);
       return false;
     }
   }

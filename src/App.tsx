@@ -74,14 +74,17 @@ const AppContent: React.FC = () => {
   }
 
   const handleLogin = (loggedInUser: User) => {
-    setShowWelcomePopup(true);
-    playSound.success();
-    showSuccess('Welcome back!', `You're now logged in as ${loggedInUser.name}`);
-    addNotification({
-      title: 'Successful Login',
-      message: `Welcome back, ${loggedInUser.name}! You're logged in as ${loggedInUser.role}.`,
-      type: 'success'
-    });
+    // Use setTimeout to avoid setState during render warning
+    setTimeout(() => {
+      setShowWelcomePopup(true);
+      playSound.success();
+      showSuccess('Welcome back!', `You're now logged in as ${loggedInUser.name}`);
+      addNotification({
+        title: 'Successful Login',
+        message: `Welcome back, ${loggedInUser.name}! You're logged in as ${loggedInUser.role}.`,
+        type: 'success'
+      });
+    }, 0);
   };
 
   const handleLogout = () => {
@@ -169,7 +172,7 @@ const AppContent: React.FC = () => {
             <div className="header-info">
               <div className="role-country-info">
                 <span className="info-label">Role:</span>
-                <span className={`role-badge ${user.role}`}>{user.role.replace('-', ' ').toUpperCase()}</span>
+                <span className={`role-badge ${user.role || ''}`}>{user.role ? user.role.replace('-', ' ').toUpperCase() : 'Unknown'}</span>
                 {user.selectedCountry && (
                   <>
                     <span className="info-label">Country:</span>
@@ -347,7 +350,7 @@ const AppContent: React.FC = () => {
             <div className="permission-denied-content">
               <h2>🚫 Access Denied</h2>
               <p>You don't have permission to create new cases.</p>
-              <p>Your role (<span className={`role-badge ${user.role}`}>{user.role.replace('-', ' ').toUpperCase()}</span>) does not allow case booking access.</p>
+              <p>Your role (<span className={`role-badge ${user.role || ''}`}>{user.role ? user.role.replace('-', ' ').toUpperCase() : 'Unknown'}</span>) does not allow case booking access.</p>
               <button
                 onClick={() => {
                   setActivePage('cases');

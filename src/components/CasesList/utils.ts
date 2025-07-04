@@ -1,40 +1,42 @@
 import { CaseStatus } from '../../types';
 import { formatDateTime as formatDateTimeUtil } from '../../utils/dateFormat';
+import { CASE_STATUSES } from '../../constants/statuses';
+import { USER_ROLES } from '../../constants/permissions';
 
 export const statusOptions: CaseStatus[] = [
-  'Case Booked',
-  'Order Preparation',
-  'Order Prepared',
-  'Pending Delivery (Hospital)',
-  'Delivered (Hospital)',
-  'Case Completed',
-  'Pending Delivery (Office)',
-  'Delivered (Office)',
-  'To be billed',
-  'Case Closed',
-  'Case Cancelled'
+  CASE_STATUSES.CASE_BOOKED,
+  CASE_STATUSES.ORDER_PREPARATION,
+  CASE_STATUSES.ORDER_PREPARED,
+  CASE_STATUSES.PENDING_DELIVERY_HOSPITAL,
+  CASE_STATUSES.DELIVERED_HOSPITAL,
+  CASE_STATUSES.CASE_COMPLETED,
+  CASE_STATUSES.PENDING_DELIVERY_OFFICE,
+  CASE_STATUSES.DELIVERED_OFFICE,
+  CASE_STATUSES.TO_BE_BILLED,
+  CASE_STATUSES.CASE_CLOSED,
+  CASE_STATUSES.CASE_CANCELLED
 ];
 
 export const getNextResponsibleRole = (status: CaseStatus): string | null => {
   switch (status) {
-    case 'Case Booked':
-      return 'Operations / Operations Manager';
-    case 'Order Preparation':
+    case CASE_STATUSES.CASE_BOOKED:
+      return `${USER_ROLES.OPERATIONS} / ${USER_ROLES.OPERATIONS_MANAGER}`;
+    case CASE_STATUSES.ORDER_PREPARATION:
       return 'Operations Team';
-    case 'Order Prepared':
-      return 'Driver';
-    case 'Pending Delivery (Hospital)':
-      return 'Driver';
-    case 'Delivered (Hospital)':
+    case CASE_STATUSES.ORDER_PREPARED:
+      return USER_ROLES.DRIVER;
+    case CASE_STATUSES.PENDING_DELIVERY_HOSPITAL:
+      return USER_ROLES.DRIVER;
+    case CASE_STATUSES.DELIVERED_HOSPITAL:
       return 'Sales Team';
-    case 'Case Completed':
-      return 'Sales / Driver';
-    case 'Pending Delivery (Office)':
-      return 'Driver / Sales';
-    case 'Delivered (Office)':
-      return 'Admin / System';
-    case 'To be billed':
-      return 'Admin / System';
+    case CASE_STATUSES.CASE_COMPLETED:
+      return `${USER_ROLES.SALES} / ${USER_ROLES.DRIVER}`;
+    case CASE_STATUSES.PENDING_DELIVERY_OFFICE:
+      return `${USER_ROLES.DRIVER} / ${USER_ROLES.SALES}`;
+    case CASE_STATUSES.DELIVERED_OFFICE:
+      return `${USER_ROLES.ADMIN} / System`;
+    case CASE_STATUSES.TO_BE_BILLED:
+      return `${USER_ROLES.ADMIN} / System`;
     default:
       return null;
   }
@@ -42,16 +44,16 @@ export const getNextResponsibleRole = (status: CaseStatus): string | null => {
 
 export const getTooltipMessage = (requiredRoles: string[], action: string): string => {
   const roleNames = {
-    'admin': 'Administrator',
-    'operations': 'Operations',
-    'operations-manager': 'Operations Manager', 
-    'sales': 'Sales',
-    'sales-manager': 'Sales Manager',
-    'driver': 'Driver'
+    [USER_ROLES.ADMIN]: 'Administrator',
+    [USER_ROLES.OPERATIONS]: 'Operations',
+    [USER_ROLES.OPERATIONS_MANAGER]: 'Operations Manager', 
+    [USER_ROLES.SALES]: 'Sales',
+    [USER_ROLES.SALES_MANAGER]: 'Sales Manager',
+    [USER_ROLES.DRIVER]: 'Driver'
   };
 
   const roleList = requiredRoles
-    .filter(role => role !== 'admin') // Remove admin from tooltip display
+    .filter(role => role !== USER_ROLES.ADMIN) // Remove admin from tooltip display
     .map(role => roleNames[role as keyof typeof roleNames] || role)
     .join(' or ');
   
@@ -64,17 +66,17 @@ export const formatDateTime = (dateTime: string) => {
 
 export const getStatusColor = (status: CaseStatus): string => {
   switch (status) {
-    case 'Case Booked': return '#ff9800';
-    case 'Order Preparation': return '#e91e63';
-    case 'Order Prepared': return '#9c27b0';
-    case 'Pending Delivery (Hospital)': return '#4caf50';
-    case 'Delivered (Hospital)': return '#00bcd4';
-    case 'Case Completed': return '#8bc34a';
-    case 'Pending Delivery (Office)': return '#03a9f4';
-    case 'Delivered (Office)': return '#607d8b';
-    case 'To be billed': return '#795548';
-    case 'Case Closed': return '#4caf50';
-    case 'Case Cancelled': return '#f44336';
+    case CASE_STATUSES.CASE_BOOKED: return '#ff9800';
+    case CASE_STATUSES.ORDER_PREPARATION: return '#e91e63';
+    case CASE_STATUSES.ORDER_PREPARED: return '#9c27b0';
+    case CASE_STATUSES.PENDING_DELIVERY_HOSPITAL: return '#4caf50';
+    case CASE_STATUSES.DELIVERED_HOSPITAL: return '#00bcd4';
+    case CASE_STATUSES.CASE_COMPLETED: return '#8bc34a';
+    case CASE_STATUSES.PENDING_DELIVERY_OFFICE: return '#03a9f4';
+    case CASE_STATUSES.DELIVERED_OFFICE: return '#607d8b';
+    case CASE_STATUSES.TO_BE_BILLED: return '#795548';
+    case CASE_STATUSES.CASE_CLOSED: return '#4caf50';
+    case CASE_STATUSES.CASE_CANCELLED: return '#f44336';
     default: return '#757575';
   }
 };
