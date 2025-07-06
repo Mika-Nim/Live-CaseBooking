@@ -47,7 +47,9 @@ const CountryGroupedDepartments: React.FC<CountryGroupedDepartmentsProps> = ({
         );
         
         // Reload departments after initialization
-        const updatedDepartmentsByCountry = getDepartmentsByCountry();
+        console.log('🔄 CountryGroupedDepartments: Loading departments for countries:', userCountries);
+        const updatedDepartmentsByCountry = await getDepartmentsByCountry();
+        console.log('📋 CountryGroupedDepartments: All departments by country:', updatedDepartmentsByCountry);
         
         // Only show departments for user's assigned countries
         const filteredDepartments = Object.fromEntries(
@@ -55,13 +57,14 @@ const CountryGroupedDepartments: React.FC<CountryGroupedDepartmentsProps> = ({
             userCountries.includes(country)
           )
         );
+        console.log('🎯 CountryGroupedDepartments: Filtered departments:', filteredDepartments);
         
         setDepartmentsByCountry(filteredDepartments);
         
         // Auto-expand countries that have selected departments
         const countriesWithSelections = new Set<string>();
         Object.entries(filteredDepartments).forEach(([country, departments]) => {
-          const hasSelectedDepartments = departments.some(dept => {
+          const hasSelectedDepartments = departments.some((dept: string) => {
             const countrySpecificId = createCountryDepartmentId(country, dept);
             return selectedDepartments.includes(countrySpecificId);
           });

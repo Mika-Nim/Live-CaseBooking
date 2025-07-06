@@ -81,7 +81,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (result.user) {
         console.log('✅ AuthContext: Setting user in context')
+        console.log('✅ AuthContext: User object to set:', result.user)
         setUser(result.user)
+        console.log('✅ AuthContext: User state updated, isAuthenticated should now be true')
         return { user: result.user }
       } else {
         console.error('❌ AuthContext: Login failed:', result.error)

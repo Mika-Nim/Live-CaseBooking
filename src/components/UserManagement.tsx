@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { User } from '../types';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { useUsers } from '../hooks/useUsers';
 import { useNotifications } from '../contexts/NotificationContext';
 import { useToast } from './ToastContainer';
@@ -8,8 +8,7 @@ import { useSound } from '../contexts/SoundContext';
 import { hasPermission, PERMISSION_ACTIONS } from '../utils/permissions';
 import { 
   getCountries, 
-  initializeCodeTables, 
-  getDepartmentsForCountries
+  initializeCodeTables
 } from '../utils/codeTable';
 import { getAllRoles } from '../data/permissionMatrixData';
 import MultiSelectDropdown from './MultiSelectDropdown';
@@ -19,7 +18,7 @@ import RoleManagement from './RoleManagement';
 import '../styles/department-management.css';
 
 const UserManagement: React.FC = () => {
-  const currentUser = getCurrentUser();
+  const { user: currentUser } = useAuth();
   const { users, loading, error: usersError, addUser, updateUser, deleteUser } = useUsers();
   
   const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users');
@@ -91,13 +90,22 @@ const UserManagement: React.FC = () => {
 
   // ALL useEffect hooks MUST be called before any conditional returns
   useEffect(() => {
-    initializeCodeTables();
-    
-    // Load countries from code tables
-    setAvailableCountries(getCountries());
-    
-    // Load available roles
-    loadAvailableRoles();
+    const loadData = async () => {
+      try {
+        initializeCodeTables();
+        
+        // Load countries from code tables
+        const countries = await getCountries();
+        setAvailableCountries(countries);
+        
+        // Load available roles
+        loadAvailableRoles();
+      } catch (error) {
+        console.error('Error loading user management data:', error);
+        setAvailableCountries([]);
+      }
+    };
+    loadData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle escape key to close add user form (removed click outside functionality)
@@ -559,18 +567,14 @@ const UserManagement: React.FC = () => {
                     options={availableCountries}
                     value={newUser.countries}
                     onChange={(values) => {
-                      // Get valid departments for the selected countries
-                      const validDepartmentsForCountries = values.length > 0 ? getDepartmentsForCountries(values) : [];
-                      
-                      // Filter out departments that don't exist in the selected countries
-                      const validDepartments = newUser.departments.filter(dept => 
-                        validDepartmentsForCountries.includes(dept)
-                      );
+                      // Note: Department validation moved to server-side for consistency
+                      // in multi-user environment. Admin should manually verify departments
+                      // are valid for selected countries.
                       
                       setNewUser(prev => ({ 
                         ...prev, 
-                        countries: values,
-                        departments: validDepartments
+                        countries: values
+                        // Keep existing departments - admin responsibility to ensure validity
                       }));
                     }}
                     placeholder="Select countries..."

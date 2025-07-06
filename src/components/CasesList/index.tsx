@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { CaseBooking, FilterOptions, CaseStatus } from '../../types';
-import { getCurrentUser } from '../../utils/auth';
+import { useAuth } from '../../contexts/AuthContext';
 import { hasPermission, PERMISSION_ACTIONS } from '../../utils/permissions';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { CasesListProps } from './types';
@@ -15,6 +15,7 @@ import { useCases } from '../../hooks/useCases';
 import { getHospitalsForCountry, getHospitals } from '../../utils/codeTable';
 
 const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highlightedCaseId, onClearHighlight, onNavigateToPermissions }) => {
+  const { user: authUser } = useAuth();
   const { addNotification } = useNotifications();
   const { modal, closeModal, showConfirm } = useModal();
   const { cases, refreshCases, updateCaseStatus: updateCaseStatusService, amendCase: amendCaseService, deleteCase: deleteCaseService } = useCases();
@@ -87,7 +88,6 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
 
   // Filter cases using useMemo for performance
   const filteredCasesData = useMemo(() => {
-    const currentUser = getCurrentUser();
     let filteredResults = cases.filter(caseItem => {
       // Apply search filter
       if (filters.search) {
@@ -121,24 +121,24 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
     });
     
     // Country-based filtering for Operations and Operations Manager roles
-    if ((currentUser?.role === USER_ROLES.OPERATIONS || currentUser?.role === USER_ROLES.OPERATIONS_MANAGER) && currentUser.selectedCountry) {
+    if ((authUser?.role === USER_ROLES.OPERATIONS || authUser?.role === USER_ROLES.OPERATIONS_MANAGER) && authUser.selectedCountry) {
       filteredResults = filteredResults.filter(caseItem => 
-        caseItem.country === currentUser.selectedCountry
+        caseItem.country === authUser.selectedCountry
       );
     }
     
     // Department-based filtering (excluding Operations Managers who have broader access)
-    if (currentUser?.departments && currentUser.departments.length > 0 && 
-        currentUser.role !== USER_ROLES.ADMIN && 
-        currentUser.role !== USER_ROLES.OPERATIONS_MANAGER && 
-        currentUser.role !== USER_ROLES.IT) {
+    if (authUser?.departments && authUser.departments.length > 0 && 
+        authUser.role !== USER_ROLES.ADMIN && 
+        authUser.role !== USER_ROLES.OPERATIONS_MANAGER && 
+        authUser.role !== USER_ROLES.IT) {
       filteredResults = filteredResults.filter(caseItem => 
-        userHasDepartmentAccess(currentUser.departments, caseItem.department)
+        userHasDepartmentAccess(authUser.departments, caseItem.department)
       );
     }
     
     return filteredResults;
-  }, [cases, filters]);
+  }, [cases, filters, authUser]);
 
   // Update filteredCases whenever filteredCasesData changes
   useEffect(() => {
@@ -179,28 +179,30 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
 
   // Update available submitters and hospitals when cases change
   useEffect(() => {
-    // Extract unique submitters from all cases
-    const uniqueSubmitters = Array.from(new Set(cases.map(caseItem => caseItem.submittedBy)))
-      .filter(submitter => submitter && submitter.trim())
-      .sort();
-    setAvailableSubmitters(uniqueSubmitters);
+    const loadData = async () => {
+      // Extract unique submitters from all cases
+      const uniqueSubmitters = Array.from(new Set(cases.map(caseItem => caseItem.submittedBy)))
+        .filter(submitter => submitter && submitter.trim())
+        .sort();
+      setAvailableSubmitters(uniqueSubmitters);
 
-    // Use country-specific hospitals instead of extracting from all cases
-    const user = getCurrentUser();
-    const userCountry = user?.selectedCountry || 'Singapore';
-    console.log('🏥 CasesList - Loading hospitals for country:', userCountry);
-    
-    if (userCountry) {
-      const countryHospitals = getHospitalsForCountry(userCountry);
-      console.log('🏥 CasesList - Country-specific hospitals:', countryHospitals);
-      setAvailableHospitals(countryHospitals.sort());
-    } else {
-      // Fallback to global hospitals if no country selected
-      const globalHospitals = getHospitals();
-      console.log('🏥 CasesList - Global hospitals fallback:', globalHospitals);
-      setAvailableHospitals(globalHospitals.sort());
-    }
-  }, [cases]);
+      // Use country-specific hospitals instead of extracting from all cases
+      const userCountry = authUser?.selectedCountry || 'Singapore';
+      console.log('🏥 CasesList - Loading hospitals for country:', userCountry);
+      
+      if (userCountry) {
+        const countryHospitals = await getHospitalsForCountry(userCountry);
+        console.log('🏥 CasesList - Country-specific hospitals:', countryHospitals);
+        setAvailableHospitals(countryHospitals.sort());
+      } else {
+        // Fallback to global hospitals if no country selected
+        const globalHospitals = getHospitals();
+        console.log('🏥 CasesList - Global hospitals fallback:', globalHospitals);
+        setAvailableHospitals(globalHospitals.sort());
+      }
+    };
+    loadData();
+  }, [cases, authUser]);
 
   const handleFilterChange = async (field: keyof FilterOptions, value: string) => {
     setTempFilters(prev => ({
@@ -261,8 +263,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
   };
 
   const handleStatusChange = async (caseId: string, newStatus: CaseStatus) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser) return;
+    if (!authUser) return;
 
     const caseItem = cases.find(c => c.id === caseId);
     await updateCaseStatusService(caseId, newStatus);
@@ -297,12 +298,11 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
   };
 
   const handleSaveAmendment = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser) return;
+    if (!authUser) return;
 
     try {
-      const isAdmin = currentUser.role === 'admin';
-      await amendCaseService(caseId, amendmentData, currentUser.name, isAdmin);
+      const isAdmin = authUser.role === 'admin';
+      await amendCaseService(caseId, amendmentData, authUser.name, isAdmin);
       setAmendingCase(null);
       setAmendmentData({});
       
@@ -334,8 +334,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       return;
     }
 
-    const currentUser = getCurrentUser();
-    if (!currentUser) {
+    if (!authUser) {
       return;
     }
 
@@ -361,7 +360,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       // Add notification for status change
       addNotification({
         title: 'Order Processed',
-        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been processed and is now ready for delivery by ${currentUser.name}`,
+        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been processed and is now ready for delivery by ${authUser.name}`,
         type: 'success'
       });
 
@@ -390,8 +389,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
   };
 
   const handleOrderDelivered = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser || !hasPermission(currentUser.role, PERMISSION_ACTIONS.PENDING_DELIVERY_HOSPITAL)) {
+    if (!authUser || !hasPermission(authUser.role, PERMISSION_ACTIONS.PENDING_DELIVERY_HOSPITAL)) {
       return;
     }
     try {
@@ -416,7 +414,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       // Add notification for status change
       addNotification({
         title: 'Pending Delivery to Hospital',
-        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been delivered to hospital by ${currentUser.name}`,
+        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been delivered to hospital by ${authUser.name}`,
         type: 'success'
       });
     } catch (error) {
@@ -432,8 +430,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
   };
 
   const handleSaveOrderReceived = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser || !hasPermission(currentUser.role, PERMISSION_ACTIONS.DELIVERED_HOSPITAL)) {
+    if (!authUser || !hasPermission(authUser.role, PERMISSION_ACTIONS.DELIVERED_HOSPITAL)) {
       return;
     }
     if (!receivedDetails.trim()) {
@@ -475,7 +472,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       // Add notification for status change
       addNotification({
         title: 'Delivered at Hospital',
-        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been received at hospital by ${currentUser.name}`,
+        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been received at hospital by ${authUser.name}`,
         type: 'success'
       });
     } catch (error) {
@@ -492,8 +489,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
   };
 
   const handleSaveCaseCompleted = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser || !hasPermission(currentUser.role, PERMISSION_ACTIONS.CASE_COMPLETED)) {
+    if (!authUser || !hasPermission(authUser.role, PERMISSION_ACTIONS.CASE_COMPLETED)) {
       return;
     }
     if (!orderSummary.trim() || !doNumber.trim()) {
@@ -523,7 +519,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       // Add notification for status change
       addNotification({
         title: 'Case Completed',
-        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been completed by ${currentUser.name} with DO#: ${doNumber}`,
+        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been completed by ${authUser.name} with DO#: ${doNumber}`,
         type: 'success'
       });
     } catch (error) {
@@ -533,8 +529,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
 
   // Delivered (Office) workflow
   const handleOrderDeliveredOffice = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser || !hasPermission(currentUser.role, PERMISSION_ACTIONS.DELIVERED_OFFICE)) {
+    if (!authUser || !hasPermission(authUser.role, PERMISSION_ACTIONS.DELIVERED_OFFICE)) {
       return;
     }
     try {
@@ -552,7 +547,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       // Add notification for status change
       addNotification({
         title: 'Delivered to Office',
-        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been delivered to office by ${currentUser.name}`,
+        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been delivered to office by ${authUser.name}`,
         type: 'success'
       });
     } catch (error) {
@@ -562,8 +557,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
 
   // To be billed workflow
   const handleToBeBilled = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser) {
+    if (!authUser) {
       return;
     }
     try {
@@ -581,7 +575,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       // Add notification for status change
       addNotification({
         title: 'Case Ready for Billing',
-        message: `Case ${caseItem?.caseReferenceNumber || caseId} is now ready to be billed - updated by ${currentUser.name}`,
+        message: `Case ${caseItem?.caseReferenceNumber || caseId} is now ready to be billed - updated by ${authUser.name}`,
         type: 'success'
       });
     } catch (error) {
@@ -597,8 +591,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
   };
 
   const handleSavePendingOffice = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser || !hasPermission(currentUser.role, PERMISSION_ACTIONS.PENDING_DELIVERY_OFFICE)) {
+    if (!authUser || !hasPermission(authUser.role, PERMISSION_ACTIONS.PENDING_DELIVERY_OFFICE)) {
       return;
     }
     try {
@@ -623,7 +616,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       // Add notification for status change
       addNotification({
         title: 'Pending Delivery to Office',
-        message: `Case ${caseItem?.caseReferenceNumber || caseId} is now pending delivery to office - updated by ${currentUser.name}`,
+        message: `Case ${caseItem?.caseReferenceNumber || caseId} is now pending delivery to office - updated by ${authUser.name}`,
         type: 'success'
       });
     } catch (error) {
@@ -645,8 +638,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
   };
 
   const handleSaveOfficeDelivery = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser || !hasPermission(currentUser.role, PERMISSION_ACTIONS.DELIVERED_OFFICE)) {
+    if (!authUser || !hasPermission(authUser.role, PERMISSION_ACTIONS.DELIVERED_OFFICE)) {
       return;
     }
     try {
@@ -671,7 +663,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
       // Add notification for status change
       addNotification({
         title: 'Delivered to Office',
-        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been delivered to office by ${currentUser.name}`,
+        message: `Case ${caseItem?.caseReferenceNumber || caseId} has been delivered to office by ${authUser.name}`,
         type: 'success'
       });
     } catch (error) {
@@ -687,8 +679,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
 
   // Cancel case workflow
   const handleCancelCase = async (caseId: string) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser) {
+    if (!authUser) {
       return;
     }
     
@@ -710,7 +701,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
         // Add notification for status change
         addNotification({
           title: 'Case Cancelled',
-          message: `Case ${caseItem?.caseReferenceNumber || caseId} has been cancelled by ${currentUser.name}`,
+          message: `Case ${caseItem?.caseReferenceNumber || caseId} has been cancelled by ${authUser.name}`,
           type: 'warning'
         });
       } catch (error) {
@@ -733,8 +724,7 @@ const CasesList: React.FC<CasesListProps> = ({ onProcessCase, currentUser, highl
   };
 
   const handleDeleteCase = async (caseId: string, caseItem: CaseBooking) => {
-    const currentUser = getCurrentUser();
-    if (!currentUser || !hasPermission(currentUser.role, PERMISSION_ACTIONS.DELETE_CASE)) {
+    if (!authUser || !hasPermission(authUser.role, PERMISSION_ACTIONS.DELETE_CASE)) {
       return;
     }
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CaseCardProps } from './types';
 import { getStatusColor, getNextResponsibleRole, formatDateTime } from './utils';
 import CaseActions from './CaseActions';
-import { getCurrentUser } from '../../utils/auth';
+import { useAuth } from '../../contexts/AuthContext';
 import { getAllProcedureTypes } from '../../utils/storage';
 import { getDepartments, initializeCodeTables } from '../../utils/codeTable';
 import TimePicker from '../common/TimePicker';
@@ -83,24 +83,26 @@ const CaseCard: React.FC<CaseCardProps> = ({
   onOfficeDeliveryCommentsChange,
   onNavigateToPermissions
 }) => {
+  const { user: currentUser } = useAuth();
   const [availableProcedureTypes, setAvailableProcedureTypes] = useState<string[]>([]);
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
 
   // Load dynamic procedure types and departments on component mount
   useEffect(() => {
-    initializeCodeTables();
-    const currentUser = getCurrentUser();
-    const userCountry = currentUser?.selectedCountry || currentUser?.countries?.[0];
-    const allTypes = getAllProcedureTypes(userCountry);
-    setAvailableProcedureTypes(allTypes);
-    
-    // Load departments from code tables
-    const departments = getDepartments();
-    setAvailableDepartments(departments);
+    const loadData = async () => {
+      initializeCodeTables();
+      const userCountry = currentUser?.selectedCountry || currentUser?.countries?.[0];
+      const allTypes = await getAllProcedureTypes(userCountry);
+      setAvailableProcedureTypes(allTypes);
+      
+      // Load departments from code tables
+      const departments = await getDepartments();
+      setAvailableDepartments(departments);
+    };
+    loadData();
   }, []);
 
   const canAmendCase = (caseItem: any): boolean => {
-    const currentUser = getCurrentUser();
     if (!currentUser) return false;
     
     // Admin can amend any case unlimited times

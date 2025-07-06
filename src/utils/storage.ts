@@ -1,5 +1,7 @@
 import { CaseBooking, FilterOptions, StatusHistory, AmendmentHistory } from '../types';
 import { sendStatusChangeNotification } from './emailNotificationService';
+import { lookupOperations } from '../services/supabaseService';
+import { withErrorHandling, DatabaseError } from './errorHandler';
 
 const CASES_KEY = 'case-booking-cases';
 const CASE_COUNTER_KEY = 'case-booking-counter';
@@ -331,31 +333,72 @@ export const saveCategorizedSets = (categorizedSets: CategorizedSets, country?: 
   }
 };
 
-export const getCategorizedSets = (country?: string): CategorizedSets => {
-  if (country) {
-    // Try to get country-specific sets first
-    const countryStored = localStorage.getItem(`categorized-sets-${country}`);
-    if (countryStored) {
-      return JSON.parse(countryStored);
-    }
-  }
-  
-  // Fallback to legacy global sets for migration
-  const globalStored = localStorage.getItem('categorized-sets');
-  if (globalStored) {
-    const globalSets = JSON.parse(globalStored);
+// Save individual surgery set to Supabase
+export const saveSurgerySetToSupabase = async (setName: string, procedureType: string, country: string): Promise<void> => {
+  return withErrorHandling(async () => {
+    const { lookupOperations } = await import('../services/supabaseService');
     
-    // If we have a country and global sets exist, migrate them to country-specific
-    if (country && Object.keys(globalSets).length > 0) {
-      saveCategorizedSets(globalSets, country);
-      return globalSets;
+    // Create surgery set in Supabase
+    const surgerySetId = await lookupOperations.createSurgerySet(setName, country);
+    
+    // Create procedure mapping
+    await lookupOperations.createProcedureMapping(procedureType, surgerySetId, null, country);
+    
+    console.log(`✅ Surgery set '${setName}' saved to Supabase for ${procedureType} in ${country}`);
+  }, {
+    operation: 'save surgery set',
+    showToUser: true,
+    fallbackMessage: `Failed to save surgery set to database. The set has been saved locally and will sync when the connection is restored.`
+  });
+};
+
+// Save individual implant box to Supabase
+export const saveImplantBoxToSupabase = async (boxName: string, procedureType: string, country: string): Promise<void> => {
+  return withErrorHandling(async () => {
+    const { lookupOperations } = await import('../services/supabaseService');
+    
+    // Create implant box in Supabase
+    const implantBoxId = await lookupOperations.createImplantBox(boxName, country);
+    
+    // Create procedure mapping
+    await lookupOperations.createProcedureMapping(procedureType, null, implantBoxId, country);
+    
+    console.log(`✅ Implant box '${boxName}' saved to Supabase for ${procedureType} in ${country}`);
+  }, {
+    operation: 'save implant box',
+    showToUser: true,
+    fallbackMessage: `Failed to save implant box to database. The box has been saved locally and will sync when the connection is restored.`
+  });
+};
+
+export const getCategorizedSets = async (country?: string): Promise<CategorizedSets> => {
+  return withErrorHandling(async () => {
+    console.log('⚙️ Getting categorized sets from Supabase for country:', country);
+    
+    // Get from Supabase only
+    const procedureTypes = await lookupOperations.getProcedureTypes(country);
+    const categorizedSets: CategorizedSets = {};
+    
+    for (const procedureType of procedureTypes) {
+      try {
+        const mappings = await lookupOperations.getProcedureMappings(procedureType.name, country || 'Singapore');
+        if (mappings.surgerySets.length > 0 || mappings.implantBoxes.length > 0) {
+          categorizedSets[procedureType.name] = {
+            surgerySets: mappings.surgerySets,
+            implantBoxes: mappings.implantBoxes
+          };
+        }
+      } catch (error) {
+        console.warn(`Failed to get mappings for ${procedureType.name}:`, error);
+      }
     }
     
-    return globalSets;
-  }
-  
-  // Return empty object if no categorized sets found
-  return {};
+    return categorizedSets;
+  }, {
+    operation: 'fetch categorized sets',
+    showToUser: true,
+    fallbackMessage: `Unable to load surgery sets and implant boxes${country ? ` for ${country}` : ''}. Please try again.`
+  });
 };
 
 // Dynamic Procedure Types Management - Country-specific
@@ -481,15 +524,32 @@ export const restoreProcedureType = (typeName: string, country?: string): boolea
   return true;
 };
 
-export const getAllProcedureTypes = (country?: string): string[] => {
-  // Import the base types from types file
-  const baseProcedureTypes = ['Knee', 'Head', 'Hip', 'Hands', 'Neck', 'Spine'];
-  const customTypes = getCustomProcedureTypes(country);
-  const hiddenTypes = getHiddenProcedureTypes(country);
-  
-  // Filter out hidden base types and combine with custom types
-  const visibleBaseTypes = baseProcedureTypes.filter(type => !hiddenTypes.includes(type));
-  return [...visibleBaseTypes, ...customTypes];
+export const getAllProcedureTypes = async (country?: string): Promise<string[]> => {
+  return withErrorHandling(async () => {
+    console.log('🔬 Getting procedure types from Supabase for country:', country);
+    
+    const procedureTypes = await lookupOperations.getProcedureTypes(country);
+    
+    if (procedureTypes.length === 0) {
+      console.warn(`⚠️ No procedure types found${country ? ` for ${country}` : ''}. This country may not be set up yet.`);
+      return []; // Return empty array instead of throwing error
+    }
+    
+    return procedureTypes
+      .filter(pt => !pt.is_hidden)
+      .map(pt => pt.name)
+      .sort();
+  }, {
+    operation: 'fetch procedure types',
+    showToUser: true,
+    fallbackMessage: `Unable to load procedure types${country ? ` for ${country}` : ''}. Please try again.`
+  });
+};
+
+// DEPRECATED: Synchronous version no longer supported for multi-user consistency
+export const getAllProcedureTypesSync = (country?: string): string[] => {
+  console.warn('⚠️ getAllProcedureTypesSync is deprecated. Use async getAllProcedureTypes() instead.');
+  return [];
 };
 
 export const getHiddenProcedureTypesList = (country?: string): string[] => {

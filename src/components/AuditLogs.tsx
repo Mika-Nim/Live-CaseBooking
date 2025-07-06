@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { hasPermission, PERMISSION_ACTIONS } from '../utils/permissions';
 import { useNotifications } from '../contexts/NotificationContext';
 import SearchableDropdown from './SearchableDropdown';
@@ -18,7 +18,7 @@ interface AuditLogEntry {
 }
 
 const AuditLogs: React.FC = () => {
-  const currentUser = getCurrentUser();
+  const { user: currentUser } = useAuth();
   const { notifications } = useNotifications();
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [filteredLogs, setFilteredLogs] = useState<AuditLogEntry[]>([]);

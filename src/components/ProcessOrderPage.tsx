@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CaseBooking } from '../types';
 import { updateCaseStatus } from '../utils/storage';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { formatDateTime } from '../utils/dateFormat';
 
 interface ProcessOrderPageProps {
@@ -15,6 +15,7 @@ const ProcessOrderPage: React.FC<ProcessOrderPageProps> = ({
   onProcessComplete, 
   onBack 
 }) => {
+  const { user: currentUser } = useAuth();
   const [processOrderDetails, setProcessOrderDetails] = useState(
     caseData.processOrderDetails || ''
   );
@@ -26,7 +27,6 @@ const ProcessOrderPage: React.FC<ProcessOrderPageProps> = ({
       return;
     }
 
-    const currentUser = getCurrentUser();
     if (!currentUser) {
       alert('You must be logged in to process orders.');
       return;

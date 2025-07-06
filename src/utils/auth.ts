@@ -1,5 +1,4 @@
 import { User, COUNTRIES } from '../types';
-import { getCountries } from './codeTable';
 
 const STORAGE_KEY = 'case-booking-users';
 const SESSION_KEY = 'case-booking-session';
@@ -24,7 +23,7 @@ export const getUsers = (): User[] => {
       role: 'admin',
       name: 'Administrator',
       departments: [],
-      countries: getCountries().length > 0 ? getCountries() : [...COUNTRIES]
+      countries: [...COUNTRIES] // Use fallback since this runs synchronously during initialization
     }
   ];
   

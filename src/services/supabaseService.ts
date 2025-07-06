@@ -1,12 +1,12 @@
-import { supabase } from './supabase'
+import { supabase, supabaseAdmin } from './supabase'
 import type { 
   CaseBooking, 
   User, 
   Notification
 } from '../types'
 import { CASE_STATUSES } from '../constants/statuses'
-import { USER_ROLES } from '../constants/permissions'
 import { DEFAULT_COUNTRY } from '../types'
+import { withErrorHandling, withRetry, DatabaseError } from '../utils/errorHandler'
 
 // AuditLogEntry interface definition since it's not in types
 export interface AuditLogEntry {
@@ -135,50 +135,43 @@ export const countryOperations = {
 
 export const userOperations = {
   async getAll(): Promise<User[]> {
-    console.log('👥 userOperations.getAll() called - using direct fetch to bypass hanging Supabase client')
+    console.log('👥 Fetching all users from Supabase...')
     
     try {
-      // Use direct fetch since Supabase client hangs  
-      const fetchPromise = fetch(`${process.env.REACT_APP_SUPABASE_URL}/rest/v1/users?select=*&order=name`, {
-        method: 'GET',
-        headers: {
-          'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY!}`,
-          'Content-Type': 'application/json'
-        }
-      })
+      const { data, error } = await supabaseAdmin
+        .from('users')
+        .select(`
+          *,
+          role:roles(name, display_name),
+          selected_country:countries(code, name),
+          user_departments(department_name),
+          user_countries(country:countries(code, name))
+        `)
+        .eq('enabled', true)
+        .order('name')
       
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Users fetch timeout')), 10000)
-      })
-      
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as any
-      
-      if (!response.ok) {
-        console.error('❌ Users fetch failed:', response.status, response.statusText)
-        return []
+      console.log('👥 User query result:', { data, error, count: data?.length })
+      if (error) {
+        console.error('👥 User query error:', error)
+        throw error
       }
       
-      const data = await response.json()
-      console.log('✅ Users fetched successfully:', data.length, 'users')
-      console.log('👥 Raw user data sample:', data.length > 0 ? data[0] : 'No users found')
-      
-      // Transform to match User interface with better field mapping
-      return data.map((user: any) => ({
+      // Transform the data to match expected User interface
+      return (data || []).map((user: any) => ({
         id: user.id,
         username: user.username || '',
         password: '', // Never expose password
-        role: user.role_name || user.role || 'user', // Try multiple role field possibilities
-        name: user.name || user.full_name || user.display_name || '',
+        role: user.role?.name || 'user',
+        name: user.name || '',
         email: user.email || '',
-        enabled: user.enabled !== false, // Default to true unless explicitly false
-        departments: user.departments || user.user_departments || [],
-        countries: user.countries || user.user_countries || [],
-        selectedCountry: user.selected_country || user.country
+        enabled: user.enabled !== false,
+        departments: user.user_departments?.map((d: any) => d.department_name) || [],
+        countries: user.user_countries?.map((c: any) => c.country?.name) || [],
+        selectedCountry: user.selected_country?.name || DEFAULT_COUNTRY
       }))
     } catch (error) {
-      console.error('❌ Users fetch error:', error)
-      return []
+      console.error('👥 User operations error:', error)
+      throw error
     }
     
     /* ORIGINAL CODE - COMMENTED OUT DUE TO HANGING SUPABASE CLIENT
@@ -236,105 +229,120 @@ export const userOperations = {
   },
 
   async create(userData: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User> {
-    // Validate required fields
-    if (!userData.email) {
-      throw new Error('Email is required for user creation')
-    }
-    if (!userData.password) {
-      throw new Error('Password is required for user creation')
-    }
+    return withErrorHandling(async () => {
+      // Validate required fields
+      if (!userData.email) {
+        throw new DatabaseError({ message: 'Email is required for user creation' }, 'create user', false)
+      }
+      if (!userData.password) {
+        throw new DatabaseError({ message: 'Password is required for user creation' }, 'create user', false)
+      }
 
-    // First create auth user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: userData.email,
-      password: userData.password,
-      options: {
-        data: {
-          name: userData.name,
-          username: userData.username
+      // First create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            name: userData.name,
+            username: userData.username
+          }
+        }
+      })
+
+      if (authError) {
+        // Handle rate limiting specifically
+        if (authError.message.includes('For security purposes') || authError.message.includes('rate')) {
+          throw new DatabaseError(
+            { 
+              message: 'Too many user creation attempts. Please wait a minute before trying again.',
+              details: authError.message 
+            }, 
+            'create auth user', 
+            true // Make it retryable after delay
+          )
+        }
+        throw new DatabaseError(authError, 'create auth user', false)
+      }
+      if (!authData.user) {
+        throw new DatabaseError({ message: 'Failed to create auth user' }, 'create auth user', false)
+      }
+
+      // Get role ID with better error handling
+      let { data: roleData, error: roleError } = await supabaseAdmin
+        .from('roles')
+        .select('id, name, is_active')
+        .eq('name', userData.role)
+        .eq('is_active', true)
+        .single()
+      
+      if (roleError || !roleData) {
+        console.error('Role lookup failed:', { 
+          role: userData.role, 
+          error: roleError,
+          availableRoles: await supabaseAdmin.from('roles').select('name').eq('is_active', true) 
+        })
+        
+        // Try to find operations role as fallback
+        const { data: fallbackRole } = await supabaseAdmin
+          .from('roles')
+          .select('id')
+          .eq('name', 'operations')
+          .eq('is_active', true)
+          .single()
+        
+        if (fallbackRole) {
+          console.warn(`Using fallback role 'operations' for user ${userData.username}`)
+          roleData = fallbackRole
+        } else {
+          throw new DatabaseError({ 
+            message: `Role '${userData.role}' not found and no fallback role available. Please ensure the role exists in the database.` 
+          }, 'find user role', false)
         }
       }
-    })
 
-    if (authError) throw authError
-    if (!authData.user) throw new Error('Failed to create auth user')
-
-    // Get role ID - using hardcoded mapping to avoid RLS issues in development
-    const roleMapping: Record<string, string> = {
-      'admin': '1',
-      'operations': '2', 
-      'operations-manager': '3',
-      'sales': '4',
-      'sales-manager': '5',
-      'driver': '6',
-      'it': '7'
-    }
-    
-    const roleId = roleMapping[userData.role]
-    if (!roleId) {
-      throw new Error(`Unknown role: ${userData.role}`)
-    }
-    
-    console.log('🎭 Using hardcoded role mapping:', userData.role, '->', roleId)
-
-    // Create user profile - with fallback for RLS issues
-    let userProfileData
-    try {
-      const { data, error } = await supabase
+      // Create user profile using admin client to bypass RLS
+      const { data: userProfile, error: profileError } = await supabaseAdmin
         .from('users')
         .insert({
           id: authData.user.id,
           username: userData.username,
           name: userData.name,
-          email: userData.email!,
-          role_id: roleId,
+          email: userData.email,
+          role_id: roleData.id,
           enabled: userData.enabled ?? true
         })
         .select()
         .single()
 
-      if (error) {
-        console.warn('⚠️ Supabase users table insert failed (likely RLS), falling back to auth user data:', error)
-        // Fallback to auth user data if Supabase users table has RLS issues
-        userProfileData = {
-          id: authData.user.id,
-          username: userData.username,
-          name: userData.name,
-          email: userData.email!,
-          role_id: roleId,
-          enabled: userData.enabled ?? true,
-          _fallback: true
-        }
-      } else {
-        userProfileData = data
+      if (profileError) {
+        // Clean up auth user if profile creation fails
+        await supabase.auth.admin.deleteUser(authData.user.id)
+        throw new DatabaseError(profileError, 'create user profile', false)
       }
-    } catch (err) {
-      console.warn('⚠️ Supabase users table access failed, using fallback:', err)
-      userProfileData = {
-        id: authData.user.id,
-        username: userData.username,
-        name: userData.name,
-        email: userData.email!,
-        role_id: roleId,
-        enabled: userData.enabled ?? true,
-        _fallback: true
-      }
-    }
 
-    // Add departments and countries (skip if using fallback data due to RLS)
-    if (!userProfileData._fallback) {
-      try {
+      // Add departments and countries
+      if (userData.departments?.length || userData.countries?.length) {
+        const countryId = await this.getCountryIdByName(userData.countries?.[0] || DEFAULT_COUNTRY)
+        
+        // Add departments
         if (userData.departments?.length) {
-          const countryId = await this.getCountryIdByName(userData.countries?.[0] || DEFAULT_COUNTRY)
           const deptInserts = userData.departments.map(dept => ({
             user_id: authData.user!.id,
             department_name: dept,
             country_id: countryId
           }))
           
-          await supabase.from('user_departments').insert(deptInserts)
+          const { error: deptError } = await supabaseAdmin
+            .from('user_departments')
+            .insert(deptInserts)
+          
+          if (deptError) {
+            console.warn('Failed to assign departments:', deptError)
+          }
         }
 
+        // Add countries
         if (userData.countries?.length) {
           const countryInserts = await Promise.all(
             userData.countries.map(async (countryName) => {
@@ -346,16 +354,32 @@ export const userOperations = {
             })
           )
           
-          await supabase.from('user_countries').insert(countryInserts)
+          const { error: countryError } = await supabaseAdmin
+            .from('user_countries')
+            .insert(countryInserts)
+          
+          if (countryError) {
+            console.warn('Failed to assign countries:', countryError)
+          }
         }
-      } catch (err) {
-        console.warn('⚠️ Failed to add user departments/countries to Supabase (RLS issue):', err)
       }
-    } else {
-      console.log('ℹ️ Skipping department/country assignment due to RLS fallback mode')
-    }
 
-    return userProfileData
+      return {
+        id: userProfile.id,
+        username: userProfile.username,
+        password: '',
+        role: userData.role,
+        name: userProfile.name,
+        email: userProfile.email,
+        enabled: userProfile.enabled,
+        departments: userData.departments || [],
+        countries: userData.countries || [],
+        selectedCountry: userData.countries?.[0] || DEFAULT_COUNTRY
+      }
+    }, {
+      operation: 'create user',
+      showToUser: true
+    })
   },
 
   async update(id: string, updates: Partial<User>): Promise<User> {
@@ -371,14 +395,49 @@ export const userOperations = {
   },
 
   async getCountryIdByName(countryName: string): Promise<string> {
-    const { data, error } = await supabase
-      .from('countries')
-      .select('id')
-      .eq('name', countryName)
-      .single()
-
-    if (error) throw error
-    return data.id
+    console.log('🔍 userOperations.getCountryIdByName: Looking up country:', countryName)
+    
+    // Fallback mapping to avoid hanging queries
+    const countryMapping: { [key: string]: string } = {
+      'Singapore': 'c4b50cb5-f84e-4a2c-99ff-ec31396a18d0',
+      'Malaysia': '4ea4fdf4-41f9-4220-87f4-6dd4e1f227ee',
+      'Philippines': '59cec463-e095-4c78-99b4-5e526c3f0b45',
+      'Indonesia': '6d9edebc-3425-4ea5-a937-9814f2254319',
+      'Vietnam': '4bfdd908-9e3e-4f45-91cb-021f698a9c97',
+      'Hong Kong': '73c11bc6-a311-4eb8-94d7-00d68ed9a9ff',
+      'Thailand': 'f685d4e4-0688-453e-91c6-4379954c9821'
+    }
+    
+    if (countryMapping[countryName]) {
+      console.log('🔍 userOperations.getCountryIdByName: Using cached ID for:', countryName, countryMapping[countryName])
+      return countryMapping[countryName]
+    }
+    
+    // Try database query with timeout if not in cache
+    try {
+      const queryPromise = supabaseAdmin
+        .from('countries')
+        .select('id')
+        .eq('name', countryName)
+        .single()
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error(`Country lookup timeout for: ${countryName}`)), 3000)
+      )
+      
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any
+      
+      console.log('🔍 userOperations.getCountryIdByName: Query result:', { data, error })
+      if (error) {
+        console.error('🔍 userOperations.getCountryIdByName: Error:', error)
+        throw error
+      }
+      console.log('🔍 userOperations.getCountryIdByName: Returning ID:', data.id)
+      return data.id
+    } catch (timeoutError) {
+      console.error('🔍 userOperations.getCountryIdByName: Query failed, no fallback available:', timeoutError)
+      throw new Error(`Could not resolve country ID for: ${countryName}`)
+    }
   },
 
   async delete(id: string): Promise<void> {
@@ -391,156 +450,119 @@ export const userOperations = {
   },
 
   async authenticate(username: string, password: string, country: string): Promise<{ user: User | null; error?: string }> {
-    try {
+    return withErrorHandling(async () => {
       console.log('🔐 Starting authentication process...')
-      console.log('📧 Email:', username.includes('@') ? username : `${username}@transmedicgroup.com`)
-      console.log('🔑 Password length:', password.length)
       
-      // Use mock authentication since direct auth is working but we want fast login
-      if (username === 'anrong.low' && password === 'NewPassword123!' && country === DEFAULT_COUNTRY) {
-        console.log('🧪 Using mock authentication for testing...')
-        
-        const mockUser: User = {
-          id: '93417cab-331b-4ce2-89fe-29ba20280792',
-          username: 'anrong.low',
-          password: '',
-          role: USER_ROLES.ADMIN,
-          name: 'An Rong Low',
-          email: 'anrong.low@transmedicgroup.com',
-          enabled: true,
-          departments: [],
-          countries: [],
-          selectedCountry: country
-        }
-        
-        console.log('✅ Mock authentication successful!')
-        return { user: mockUser }
-      }
       
-      // Skip health check to avoid delay - proceed directly to auth
-      
-      // Try direct auth API call since Supabase client is hanging
-      console.log('📡 Using direct auth API call...')
       const email = username.includes('@') ? username : `${username}@transmedicgroup.com`
+      console.log('📧 Authentication: Using email:', email)
       
-      const authFetchPromise = fetch(`${process.env.REACT_APP_SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-        method: 'POST',
-        headers: {
-          'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY!,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email: email,
-          password: password
+      // Skip connectivity test - proceed directly to authentication
+      console.log('🔑 Authentication: Proceeding with Supabase authentication...')
+      
+      // Use Supabase auth directly
+      console.log('🔑 Authentication: About to call supabase.auth.signInWithPassword...')
+      console.log('🔑 Authentication: Email:', email)
+      console.log('🔑 Authentication: Password length:', password?.length)
+      
+      let authData, authError
+      try {
+        const result = await supabase.auth.signInWithPassword({
+          email,
+          password
         })
-      })
-      
-      console.log('⏳ Waiting for direct auth response...')
-      
-      const authTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Direct auth timeout after 10 seconds')), 10000)
-      })
-      
-      const authResponse = await Promise.race([authFetchPromise, authTimeout]) as any
-      const authData = await authResponse.json()
-      
-      console.log('📨 Direct auth response received!')
-      console.log('🔍 Auth response:', { status: authResponse.status, hasUser: !!authData.user })
-
-      if (!authResponse.ok || authData.error_code) {
-        console.error('❌ Direct auth error:', authData)
-        return { user: null, error: "Invalid username or password" }
+        authData = result.data
+        authError = result.error
+        console.log('🔑 Authentication: signInWithPassword completed')
+        console.log('🔑 Authentication: Data:', { hasUser: !!authData?.user, hasSession: !!authData?.session })
+        console.log('🔑 Authentication: Error:', authError)
+      } catch (exception) {
+        console.error('🔑 Authentication: Exception during signInWithPassword:', exception)
+        const errorMessage = exception instanceof Error ? exception.message : 'Unknown error'
+        return { user: null, error: "Authentication failed: " + errorMessage }
       }
-
-      if (!authData.user) {
-        console.error('❌ No user in direct auth response')
+      
+      if (authError) {
+        console.log('❌ Authentication: Auth error:', authError)
+        if (authError.message?.includes('Invalid login credentials')) {
+          return { user: null, error: "Invalid username or password. Please check your credentials." }
+        }
+        return { user: null, error: "Authentication failed: " + authError.message }
+      }
+      
+      if (!authData?.user) {
+        console.log('❌ Authentication: No user data returned')
         return { user: null, error: "Authentication failed" }
       }
-
-      console.log('✅ Direct auth successful, fetching user profile...')
-      console.log('👤 User ID:', authData.user.id)
-
-      // Get basic user profile using direct fetch since Supabase client hangs
-      const userFetchPromise = fetch(`${process.env.REACT_APP_SUPABASE_URL}/rest/v1/users?id=eq.${authData.user.id}&select=*`, {
-        method: 'GET',
-        headers: {
-          'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${authData.access_token}`,
-          'Content-Type': 'application/json'
-        }
-      })
       
-      const userTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('User fetch timeout')), 5000)
-      })
+      console.log('✅ Authentication: Supabase auth successful, user ID:', authData.user.id)
       
-      const userResponse = await Promise.race([userFetchPromise, userTimeout]) as any
-      const usersData = await userResponse.json()
+      // Get user profile
+      console.log('👤 Authentication: About to fetch user profile from database...')
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select(`
+          *,
+          role:roles(name),
+          user_departments(department_name),
+          user_countries(country:countries(code, name))
+        `)
+        .eq('id', authData.user.id)
+        .eq('enabled', true)
+        .single()
+      console.log('👤 Authentication: User profile query result:', { userData: !!userData, userError })
       
-      console.log('📋 User profile response:', { status: userResponse.status, dataLength: usersData?.length })
-
-      if (!userResponse.ok || !usersData || usersData.length === 0) {
-        console.error('❌ User profile error:', usersData)
-        return { user: null, error: "User profile not found" }
+      if (userError || !userData) {
+        console.log('❌ Authentication: User profile error:', userError)
+        return { user: null, error: "User profile not found or account disabled" }
       }
-
-      const userData = usersData[0]
-      console.log('👤 User profile:', userData)
-
-      // Check if user is enabled
-      if (!userData.enabled) {
-        console.error('❌ User account disabled')
-        return { user: null, error: "Your account has been disabled. Please contact your administrator." }
+      
+      console.log('👤 Authentication: User profile found, creating user object...')
+      
+      // Create user object
+      const userCountries = userData.user_countries?.map((c: any) => c.country?.name) || []
+      
+      // Determine selectedCountry based on user's assigned countries and login selection
+      console.log('🌍 Authentication: Login country selection:', country)
+      console.log('🌍 Authentication: User assigned countries:', userCountries)
+      
+      let selectedCountry = country // Default to login form selection
+      if (userCountries.length === 1) {
+        // If user has only one country, use that
+        selectedCountry = userCountries[0]
+        console.log('🌍 Authentication: User has single country, using:', selectedCountry)
+      } else if (userCountries.length > 1 && userCountries.includes(country)) {
+        // If user has multiple countries and login selection is valid, use login selection
+        selectedCountry = country
+        console.log('🌍 Authentication: User has multiple countries, login selection is valid, using:', selectedCountry)
+      } else if (userCountries.length > 0) {
+        // If user has countries but login selection is invalid, use first assigned country
+        selectedCountry = userCountries[0]
+        console.log('🌍 Authentication: User has countries but login selection invalid, using first assigned:', selectedCountry)
+      } else {
+        console.log('🌍 Authentication: User has no assigned countries, using login selection:', selectedCountry)
       }
-
-      // Get role name using direct fetch
-      console.log('🔍 Fetching role for role_id:', userData.role_id)
-      const roleFetchPromise = fetch(`${process.env.REACT_APP_SUPABASE_URL}/rest/v1/roles?id=eq.${userData.role_id}&select=name`, {
-        method: 'GET',
-        headers: {
-          'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${authData.access_token}`,
-          'Content-Type': 'application/json'
-        }
-      })
       
-      const roleTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Role fetch timeout')), 5000)
-      })
-      
-      const roleResponse = await Promise.race([roleFetchPromise, roleTimeout]) as any
-      const rolesData = await roleResponse.json()
-      
-      console.log('📋 Role response:', rolesData)
-      const roleName = rolesData && rolesData.length > 0 ? rolesData[0].name : 'unknown'
-
-      // Create simplified user object
       const userProfile: User = {
         id: userData.id,
         username: userData.username,
-        password: '', // Don't expose password
-        role: roleName,
+        password: '',
+        role: userData.role?.name || 'user',
         name: userData.name,
         email: userData.email,
         enabled: userData.enabled,
-        departments: [], // Will be populated later if needed
-        countries: [], // Will be populated later if needed
-        selectedCountry: country
+        departments: userData.user_departments?.map((d: any) => d.department_name) || [],
+        countries: userCountries,
+        selectedCountry: selectedCountry
       }
-
-      console.log('✅ User profile created:', userProfile)
-
-      // Check country access for non-admin users
-      if (roleName !== USER_ROLES.ADMIN) {
-        // For now, allow access - can add country check later if needed
-      }
-
-      console.log('🎉 Authentication successful!')
+      
+      console.log('✅ Authentication successful! User profile:', userProfile)
       return { user: userProfile }
-    } catch (error) {
-      console.error('Authentication error:', error)
-      return { user: null, error: "Authentication failed" }
-    }
+    }, {
+      operation: 'user authentication',
+      showToUser: true,
+      fallbackMessage: 'Authentication failed. Please check your credentials and try again.'
+    })
   }
 }
 
@@ -557,57 +579,146 @@ export const caseOperations = {
     dateFrom?: string
     dateTo?: string
   }): Promise<CaseBooking[]> {
-    console.log('🏥 caseOperations.getAll() called - using direct fetch to bypass hanging Supabase client')
+    console.log('🏥 Fetching all cases from Supabase...')
     
     try {
-      // Use direct fetch since Supabase client hangs
-      const fetchPromise = fetch(`${process.env.REACT_APP_SUPABASE_URL}/rest/v1/cases?select=*&order=created_at.desc`, {
-        method: 'GET',
-        headers: {
-          'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY!}`,
-          'Content-Type': 'application/json'
+      let query = supabaseAdmin
+        .from('cases')
+        .select(`
+          *,
+          hospital:hospitals(name),
+          procedure_type:procedure_types(name),
+          status:case_statuses(status_key, display_name, color, icon),
+          submitted_by_user:users!cases_submitted_by_fkey(name),
+          processed_by_user:users!cases_processed_by_fkey(name),
+          country:countries(code, name),
+          case_surgery_sets(surgery_set_name),
+          case_implant_boxes(implant_box_name)
+        `)
+        .order('created_at', { ascending: false })
+      
+      // Apply filters
+      if (filters?.country) {
+        const countryId = await userOperations.getCountryIdByName(filters.country)
+        query = query.eq('country_id', countryId)
+      }
+
+      if (filters?.status) {
+        const { data: statusData } = await supabaseAdmin
+          .from('case_statuses')
+          .select('id')
+          .eq('status_key', filters.status)
+          .single()
+        
+        if (statusData) {
+          query = query.eq('status_id', statusData.id)
         }
-      })
+      }
+
+      if (filters?.submitter) {
+        query = query.eq('submitted_by', filters.submitter)
+      }
+
+      if (filters?.dateFrom) {
+        query = query.gte('date_of_surgery', filters.dateFrom)
+      }
+
+      if (filters?.dateTo) {
+        query = query.lte('date_of_surgery', filters.dateTo)
+      }
+
+      const { data, error } = await query
+      console.log('🏥 Case query result:', { data, error, count: data?.length })
       
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Cases fetch timeout')), 10000)
-      })
-      
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as any
-      
-      if (!response.ok) {
-        console.error('❌ Cases fetch failed:', response.status, response.statusText)
-        return []
+      if (error) {
+        console.error('🏥 Case query error:', error)
+        throw error
       }
       
-      const data = await response.json()
-      console.log('✅ Cases fetched successfully:', data.length, 'cases')
-      console.log('📋 Raw case data sample:', data.length > 0 ? data[0] : 'No cases found')
+      return data || []
+    } catch (error) {
+      console.error('🏥 Case operations error:', error)
+      throw error
+    }
+    
+    /* ORIGINAL CODE - COMMENTED OUT DUE TO HANGING SUPABASE CLIENT
+    return withRetry(async () => {
+      console.log('🏥 Fetching all cases from Supabase...')
+      
+      let query = supabase
+        .from('cases')
+        .select(`
+          *,
+          hospital:hospitals(name),
+          procedure_type:procedure_types(name),
+          status:case_statuses(status_key, display_name, color, icon),
+          submitted_by_user:users!cases_submitted_by_fkey(name),
+          processed_by_user:users!cases_processed_by_fkey(name),
+          country:countries(code, name),
+          case_surgery_sets(surgery_set_name),
+          case_implant_boxes(implant_box_name)
+        `)
+        .order('created_at', { ascending: false })
+      
+      // Apply filters
+      if (filters?.country) {
+        const { data: countryData } = await supabase
+          .from('countries')
+          .select('id')
+          .eq('name', filters.country)
+          .single()
+        
+        if (countryData) {
+          query = query.eq('country_id', countryData.id)
+        }
+      }
+
+      if (filters?.status) {
+        query = query.eq('status_key', filters.status)
+      }
+
+      if (filters?.submitter) {
+        query = query.eq('submitted_by', filters.submitter)
+      }
+
+      if (filters?.dateFrom) {
+        query = query.gte('date_of_surgery', filters.dateFrom)
+      }
+
+      if (filters?.dateTo) {
+        query = query.lte('date_of_surgery', filters.dateTo)
+      }
+      
+      const { data, error } = await query
+      
+      if (error) {
+        throw new DatabaseError(error, 'fetch cases', true)
+      }
       
       // Transform to match CaseBooking interface
-      return data.map((caseItem: any) => ({
+      return (data || []).map((caseItem: any) => ({
         id: caseItem.id,
-        caseReferenceNumber: caseItem.case_reference_number || `CASE-${caseItem.id}`,
-        hospital: caseItem.hospital_name || caseItem.hospital || 'Unknown Hospital',
-        department: caseItem.department_name || caseItem.department || 'Unknown Department',
-        dateOfSurgery: caseItem.date_of_surgery || '',
-        procedureType: caseItem.procedure_type_name || caseItem.procedure_type || 'Unknown Procedure',
+        caseReferenceNumber: caseItem.case_reference_number,
+        hospital: caseItem.hospital?.name || caseItem.hospital_name || 'Unknown Hospital',
+        department: caseItem.department_name || 'Unknown Department',
+        dateOfSurgery: caseItem.date_of_surgery,
+        procedureType: caseItem.procedure_type?.name || caseItem.procedure_type_name || 'Unknown Procedure',
         procedureName: caseItem.procedure_name || '',
         doctorName: caseItem.doctor_name || '',
         timeOfProcedure: caseItem.time_of_procedure || '',
         specialInstruction: caseItem.special_instruction || '',
-        status: caseItem.status_key || caseItem.status || CASE_STATUSES.CASE_BOOKED,
-        submittedBy: caseItem.submitted_by || caseItem.submitted_by_name || 'Unknown User',
-        submittedAt: caseItem.submitted_at || caseItem.created_at || new Date().toISOString(),
-        country: caseItem.country_name || caseItem.country || DEFAULT_COUNTRY,
-        surgerySetSelection: caseItem.surgery_sets || [],
-        implantBox: caseItem.implant_boxes || []
+        status: caseItem.status?.status_key || caseItem.status_key || CASE_STATUSES.CASE_BOOKED,
+        submittedBy: caseItem.submitted_by_user?.name || caseItem.submitted_by || 'Unknown User',
+        submittedAt: caseItem.submitted_at || caseItem.created_at,
+        country: caseItem.country?.name || DEFAULT_COUNTRY,
+        surgerySetSelection: caseItem.case_surgery_sets?.map((s: any) => s.surgery_set_name) || [],
+        implantBox: caseItem.case_implant_boxes?.map((b: any) => b.implant_box_name) || []
       }))
-    } catch (error) {
-      console.error('❌ Cases fetch error:', error)
-      return []
-    }
+    }, {
+      operation: 'fetch cases',
+      showToUser: true,
+      maxRetries: 3
+    })
     
     /* ORIGINAL CODE - COMMENTED OUT DUE TO HANGING SUPABASE CLIENT
     let query = supabase
@@ -716,55 +827,119 @@ export const caseOperations = {
   },
 
   async create(caseData: Omit<CaseBooking, 'id' | 'created_at' | 'updated_at'>): Promise<CaseBooking> {
-    console.log('📝 caseOperations.create() called - using simplified direct fetch')
-    
-    try {
-      // Enhanced case creation using direct fetch
-      const caseInsert = {
-        case_reference_number: `CASE-${Date.now()}`, // Simple reference number
-        hospital_name: caseData.hospital,
-        department_name: caseData.department,
-        date_of_surgery: caseData.dateOfSurgery,
-        procedure_type_name: caseData.procedureType,
-        procedure_name: caseData.procedureName,
-        doctor_name: caseData.doctorName,
-        time_of_procedure: caseData.timeOfProcedure,
-        special_instruction: caseData.specialInstruction,
-        status_key: CASE_STATUSES.CASE_BOOKED,
-        submitted_by: caseData.submittedBy,
-        submitted_at: new Date().toISOString(),
-        country_name: caseData.country || DEFAULT_COUNTRY
+    return withErrorHandling(async () => {
+      console.log('📝 Creating new case in Supabase...')
+      
+      // Get required IDs
+      const countryId = await this.getCountryIdByName(caseData.country || DEFAULT_COUNTRY)
+      
+      // Get hospital ID (optional - might not exist yet)
+      let hospitalId = null
+      try {
+        const { data: hospitalData } = await supabase
+          .from('hospitals')
+          .select('id')
+          .eq('name', caseData.hospital)
+          .eq('country_id', countryId)
+          .single()
+        hospitalId = hospitalData?.id
+      } catch {
+        // Hospital might not exist in database yet
       }
       
-      const fetchPromise = fetch(`${process.env.REACT_APP_SUPABASE_URL}/rest/v1/cases`, {
-        method: 'POST',
-        headers: {
-          'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY!,
-          'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY!}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify(caseInsert)
-      })
-      
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Case creation timeout')), 10000)
-      })
-      
-      const response = await Promise.race([fetchPromise, timeoutPromise]) as any
-      
-      if (!response.ok) {
-        console.error('❌ Case creation failed:', response.status, response.statusText)
-        throw new Error(`Case creation failed: ${response.status}`)
+      // Get procedure type ID (optional)
+      let procedureTypeId = null
+      try {
+        const { data: procedureData } = await supabase
+          .from('procedure_types')
+          .select('id')
+          .eq('name', caseData.procedureType)
+          .eq('country_id', countryId)
+          .single()
+        procedureTypeId = procedureData?.id
+      } catch {
+        // Procedure type might not exist in database yet
       }
       
-      const data = await response.json()
-      console.log('✅ Case created successfully:', data)
+      // Get status ID
+      const { data: statusData, error: statusError } = await supabase
+        .from('case_statuses')
+        .select('id')
+        .eq('status_key', CASE_STATUSES.CASE_BOOKED)
+        .single()
       
-      // Return simplified case object
+      if (statusError) {
+        throw new DatabaseError(statusError, 'find case status', false)
+      }
+      
+      // Generate case reference number
+      const referenceNumber = `CASE-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+      
+      // Create case
+      const { data, error } = await supabase
+        .from('cases')
+        .insert({
+          case_reference_number: referenceNumber,
+          hospital_id: hospitalId,
+          hospital_name: caseData.hospital, // Fallback for display
+          department_name: caseData.department,
+          date_of_surgery: caseData.dateOfSurgery,
+          procedure_type_id: procedureTypeId,
+          procedure_type_name: caseData.procedureType, // Fallback for display
+          procedure_name: caseData.procedureName,
+          doctor_name: caseData.doctorName,
+          time_of_procedure: caseData.timeOfProcedure,
+          special_instruction: caseData.specialInstruction,
+          status_id: statusData.id,
+          status_key: CASE_STATUSES.CASE_BOOKED,
+          submitted_by: caseData.submittedBy,
+          country_id: countryId
+        })
+        .select()
+        .single()
+      
+      if (error) {
+        throw new DatabaseError(error, 'create case', false)
+      }
+      
+      // Add surgery sets
+      if (caseData.surgerySetSelection?.length) {
+        const setsInserts = caseData.surgerySetSelection.map(setName => ({
+          case_id: data.id,
+          surgery_set_name: setName
+        }))
+        
+        const { error: setsError } = await supabase
+          .from('case_surgery_sets')
+          .insert(setsInserts)
+        
+        if (setsError) {
+          console.warn('Failed to add surgery sets:', setsError)
+        }
+      }
+      
+      // Add implant boxes
+      if (caseData.implantBox?.length) {
+        const boxesInserts = caseData.implantBox.map(boxName => ({
+          case_id: data.id,
+          implant_box_name: boxName
+        }))
+        
+        const { error: boxesError } = await supabase
+          .from('case_implant_boxes')
+          .insert(boxesInserts)
+        
+        if (boxesError) {
+          console.warn('Failed to add implant boxes:', boxesError)
+        }
+      }
+      
+      // Add initial status history
+      await this.addStatusHistory(data.id, CASE_STATUSES.CASE_BOOKED, caseData.submittedBy, 'Case created')
+      
       return {
-        id: data[0]?.id || 'temp-id',
-        caseReferenceNumber: data[0]?.case_reference_number || caseInsert.case_reference_number,
+        id: data.id,
+        caseReferenceNumber: data.case_reference_number,
         hospital: caseData.hospital,
         department: caseData.department,
         dateOfSurgery: caseData.dateOfSurgery,
@@ -778,12 +953,12 @@ export const caseOperations = {
         country: caseData.country,
         surgerySetSelection: caseData.surgerySetSelection || [],
         implantBox: caseData.implantBox || [],
-        submittedAt: new Date().toISOString()
+        submittedAt: data.created_at
       }
-    } catch (error) {
-      console.error('❌ Case creation error:', error)
-      throw error
-    }
+    }, {
+      operation: 'create case',
+      showToUser: true
+    })
     
     /* ORIGINAL CODE - COMMENTED OUT DUE TO HANGING SUPABASE CLIENT
     // Get country ID
@@ -973,14 +1148,49 @@ export const caseOperations = {
   },
 
   async getCountryIdByName(countryName: string): Promise<string> {
-    const { data, error } = await supabase
-      .from('countries')
-      .select('id')
-      .eq('name', countryName)
-      .single()
-
-    if (error) throw error
-    return data.id
+    console.log('🔍 userOperations.getCountryIdByName: Looking up country:', countryName)
+    
+    // Fallback mapping to avoid hanging queries
+    const countryMapping: { [key: string]: string } = {
+      'Singapore': 'c4b50cb5-f84e-4a2c-99ff-ec31396a18d0',
+      'Malaysia': '4ea4fdf4-41f9-4220-87f4-6dd4e1f227ee',
+      'Philippines': '59cec463-e095-4c78-99b4-5e526c3f0b45',
+      'Indonesia': '6d9edebc-3425-4ea5-a937-9814f2254319',
+      'Vietnam': '4bfdd908-9e3e-4f45-91cb-021f698a9c97',
+      'Hong Kong': '73c11bc6-a311-4eb8-94d7-00d68ed9a9ff',
+      'Thailand': 'f685d4e4-0688-453e-91c6-4379954c9821'
+    }
+    
+    if (countryMapping[countryName]) {
+      console.log('🔍 userOperations.getCountryIdByName: Using cached ID for:', countryName, countryMapping[countryName])
+      return countryMapping[countryName]
+    }
+    
+    // Try database query with timeout if not in cache
+    try {
+      const queryPromise = supabaseAdmin
+        .from('countries')
+        .select('id')
+        .eq('name', countryName)
+        .single()
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error(`Country lookup timeout for: ${countryName}`)), 3000)
+      )
+      
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any
+      
+      console.log('🔍 userOperations.getCountryIdByName: Query result:', { data, error })
+      if (error) {
+        console.error('🔍 userOperations.getCountryIdByName: Error:', error)
+        throw error
+      }
+      console.log('🔍 userOperations.getCountryIdByName: Returning ID:', data.id)
+      return data.id
+    } catch (timeoutError) {
+      console.error('🔍 userOperations.getCountryIdByName: Query failed, no fallback available:', timeoutError)
+      throw new Error(`Could not resolve country ID for: ${countryName}`)
+    }
   },
 
   async delete(caseId: string): Promise<void> {
@@ -999,84 +1209,126 @@ export const caseOperations = {
 
 export const lookupOperations = {
   async getCountries(): Promise<Country[]> {
-    const { data, error } = await supabase
-      .from('countries')
-      .select('*')
-      .eq('is_active', true)
-      .order('name')
+    console.log('🌍 lookupOperations.getCountries: Starting real Supabase query...')
     
-    if (error) throw error
-    return data || []
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('countries')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
+      
+      console.log('🌍 lookupOperations.getCountries: Query result:', { data, error, count: data?.length })
+      if (error) {
+        console.error('🌍 lookupOperations.getCountries: Error:', error)
+        throw error
+      }
+      return data || []
+    } catch (error) {
+      console.error('🌍 lookupOperations.getCountries: Exception:', error)
+      throw error
+    }
   },
 
   async getHospitals(countryName?: string): Promise<Hospital[]> {
-    let query = supabase
-      .from('hospitals')
-      .select(`
-        *,
-        country:countries(name),
-        department:departments(name)
-      `)
-      .eq('is_active', true)
-      .order('name')
+    console.log('🏥 lookupOperations.getHospitals: Starting real Supabase query for country:', countryName)
+    
+    try {
+      let query = supabaseAdmin
+        .from('hospitals')
+        .select(`
+          *,
+          country:countries(name)
+        `)
+        .eq('is_active', true)
+        .order('name')
 
-    if (countryName) {
-      const { data: countryData } = await supabase
-        .from('countries')
-        .select('id')
-        .eq('name', countryName)
-        .single()
-      
-      if (countryData) {
-        query = query.eq('country_id', countryData.id)
+      if (countryName) {
+        console.log('🏥 lookupOperations.getHospitals: Getting country ID for:', countryName)
+        const countryId = await userOperations.getCountryIdByName(countryName)
+        console.log('🏥 lookupOperations.getHospitals: Using country ID:', countryId)
+        query = query.eq('country_id', countryId)
       }
-    }
 
-    const { data, error } = await query
-    if (error) throw error
-    return data || []
+      const { data, error } = await query
+      console.log('🏥 lookupOperations.getHospitals: Query result:', { data, error, count: data?.length })
+      if (error) {
+        console.error('🏥 lookupOperations.getHospitals: Error:', error)
+        throw error
+      }
+      return data || []
+    } catch (error) {
+      console.error('🏥 lookupOperations.getHospitals: Exception:', error)
+      throw error
+    }
   },
 
   async getDepartments(countryName?: string): Promise<Department[]> {
-    let query = supabase
-      .from('departments')
-      .select('*')
-      .eq('is_active', true)
-      .order('name')
+    console.log('🏥 lookupOperations.getDepartments: Starting real Supabase query for country:', countryName)
+    
+    try {
+      let query = supabaseAdmin
+        .from('departments')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
 
-    if (countryName) {
-      const countryId = await userOperations.getCountryIdByName(countryName)
-      query = query.eq('country_id', countryId)
+      if (countryName) {
+        console.log('🏥 lookupOperations.getDepartments: Getting country ID for:', countryName)
+        const countryId = await userOperations.getCountryIdByName(countryName)
+        console.log('🏥 lookupOperations.getDepartments: Using country ID:', countryId)
+        query = query.eq('country_id', countryId)
+      }
+
+      const { data, error } = await query
+      console.log('🏥 lookupOperations.getDepartments: Query result:', { data, error, count: data?.length })
+      if (error) {
+        console.error('🏥 lookupOperations.getDepartments: Error:', error)
+        throw error
+      }
+      return data || []
+    } catch (error) {
+      console.error('🏥 lookupOperations.getDepartments: Exception:', error)
+      throw error
     }
-
-    const { data, error } = await query
-    if (error) throw error
-    return data || []
   },
 
   async getProcedureTypes(countryName?: string, includeHidden = false): Promise<ProcedureType[]> {
-    let query = supabase
-      .from('procedure_types')
-      .select('*')
-      .eq('is_active', true)
-      .order('name')
+    console.log('🔬 lookupOperations.getProcedureTypes: Starting real Supabase query for country:', countryName)
+    
+    try {
+      let query = supabaseAdmin
+        .from('procedure_types')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
 
-    if (!includeHidden) {
-      query = query.eq('is_hidden', false)
+      if (!includeHidden) {
+        query = query.eq('is_hidden', false)
+      }
+
+      if (countryName) {
+        console.log('🔬 lookupOperations.getProcedureTypes: Getting country ID for:', countryName)
+        const countryId = await userOperations.getCountryIdByName(countryName)
+        console.log('🔬 lookupOperations.getProcedureTypes: Using country ID:', countryId)
+        query = query.eq('country_id', countryId)
+      }
+
+      const { data, error } = await query
+      console.log('🔬 lookupOperations.getProcedureTypes: Query result:', { data, error, count: data?.length })
+      if (error) {
+        console.error('🔬 lookupOperations.getProcedureTypes: Error:', error)
+        throw error
+      }
+      return data || []
+    } catch (error) {
+      console.error('🔬 lookupOperations.getProcedureTypes: Exception:', error)
+      throw error
     }
-
-    if (countryName) {
-      const countryId = await userOperations.getCountryIdByName(countryName)
-      query = query.eq('country_id', countryId)
-    }
-
-    const { data, error } = await query
-    if (error) throw error
-    return data || []
   },
 
   async getSurgerySets(countryName?: string): Promise<SurgerySet[]> {
-    let query = supabase
+    let query = supabaseAdmin
       .from('surgery_sets')
       .select('*')
       .eq('is_active', true)
@@ -1093,7 +1345,7 @@ export const lookupOperations = {
   },
 
   async getImplantBoxes(countryName?: string): Promise<ImplantBox[]> {
-    let query = supabase
+    let query = supabaseAdmin
       .from('implant_boxes')
       .select('*')
       .eq('is_active', true)
@@ -1110,7 +1362,7 @@ export const lookupOperations = {
   },
 
   async getCaseStatuses(): Promise<CaseStatus[]> {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('case_statuses')
       .select('*')
       .eq('is_active', true)
@@ -1149,6 +1401,64 @@ export const lookupOperations = {
     const implantBoxes = Array.from(new Set(implantBoxNames))
 
     return { surgerySets, implantBoxes }
+  },
+
+  async createSurgerySet(name: string, countryName: string): Promise<string> {
+    const countryId = await userOperations.getCountryIdByName(countryName)
+    
+    const { data, error } = await supabaseAdmin
+      .from('surgery_sets')
+      .insert({
+        name: name.trim(),
+        country_id: countryId,
+        is_active: true
+      })
+      .select('id')
+      .single()
+
+    if (error) throw error
+    return data.id
+  },
+
+  async createImplantBox(name: string, countryName: string): Promise<string> {
+    const countryId = await userOperations.getCountryIdByName(countryName)
+    
+    const { data, error } = await supabaseAdmin
+      .from('implant_boxes')
+      .insert({
+        name: name.trim(),
+        country_id: countryId,
+        is_active: true
+      })
+      .select('id')
+      .single()
+
+    if (error) throw error
+    return data.id
+  },
+
+  async createProcedureMapping(procedureTypeName: string, surgerySetId: string | null, implantBoxId: string | null, countryName: string): Promise<void> {
+    const countryId = await userOperations.getCountryIdByName(countryName)
+    
+    const { data: procedureData } = await supabase
+      .from('procedure_types')
+      .select('id')
+      .eq('name', procedureTypeName)
+      .eq('country_id', countryId)
+      .single()
+
+    if (!procedureData) throw new Error(`Procedure type '${procedureTypeName}' not found`)
+
+    const { error } = await supabaseAdmin
+      .from('procedure_mappings')
+      .insert({
+        procedure_type_id: procedureData.id,
+        surgery_set_id: surgerySetId,
+        implant_box_id: implantBoxId,
+        country_id: countryId
+      })
+
+    if (error) throw error
   }
 }
 

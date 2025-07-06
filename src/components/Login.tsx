@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User } from '../types';
-import { getCountries, initializeCodeTables } from '../utils/codeTable';
+import { User, COUNTRIES } from '../types';
 import SearchableDropdown from './SearchableDropdown';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -17,20 +16,38 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [availableCountries, setAvailableCountries] = useState<string[]>([]);
+  
+  // Debug available countries
+  useEffect(() => {
+    console.log('📝 Login: availableCountries state changed:', availableCountries);
+  }, [availableCountries]);
   const [rememberMe, setRememberMe] = useState(false);
   const countrySelectRef = useRef<HTMLSelectElement>(null);
 
   // Initialize code tables and load countries
   useEffect(() => {
-    initializeCodeTables();
-    const countries = getCountries();
-    setAvailableCountries(countries);
+    const loadData = async () => {
+      try {
+        // For login page, use hardcoded countries since user isn't authenticated yet
+        console.log('📝 Login: Using fallback countries for login page');
+        console.log('📝 Login: COUNTRIES array:', COUNTRIES);
+        const countriesList = [...COUNTRIES];
+        console.log('📝 Login: Setting available countries to:', countriesList);
+        setAvailableCountries(countriesList);
+      } catch (error) {
+        console.error('Error loading countries:', error);
+        setAvailableCountries([...COUNTRIES]);
+      }
+    };
+    loadData();
     
     // Load saved credentials if "Remember me" was checked
     const savedCredentials = localStorage.getItem('rememberedCredentials');
+    console.log('📝 Login: Checking saved credentials:', savedCredentials);
     if (savedCredentials) {
       try {
         const { username: savedUsername, country: savedCountry } = JSON.parse(savedCredentials);
+        console.log('📝 Login: Loaded saved credentials:', { username: savedUsername, country: savedCountry });
         setUsername(savedUsername || '');
         setCountry(savedCountry || '');
         setRememberMe(true);
@@ -38,6 +55,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         console.error('Error loading saved credentials:', error);
         localStorage.removeItem('rememberedCredentials');
       }
+    } else {
+      console.log('📝 Login: No saved credentials found');
     }
   }, []);
 
@@ -77,12 +96,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
 
     try {
-      console.log('Attempting login with:', { username, country });
+      console.log('📝 Login: Attempting login with:', { username, country });
+      console.log('📝 Login: About to call login function...');
       const result = await login(username, password, country);
-      console.log('Login result:', result);
+      console.log('📝 Login: Login result received:', result);
       
       if (result.user) {
-        console.log('Login successful, calling onLogin...');
+        console.log('📝 Login: Login successful, AuthContext should handle state automatically');
+        console.log('📝 Login: User object:', result.user);
         
         // Save credentials if "Remember me" is checked
         if (rememberMe) {
@@ -94,15 +115,17 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           localStorage.removeItem('rememberedCredentials');
         }
         
-        onLogin(result.user);
+        // Don't call onLogin manually - AuthContext will handle the state change
+        console.log('📝 Login: Waiting for AuthContext to handle authentication state...');
       } else {
-        console.log('Login failed:', result.error);
+        console.log('📝 Login: Login failed:', result.error);
         setError(result.error || 'Login failed');
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('📝 Login: Exception during login:', error);
       setError('Login failed. Please try again.');
     } finally {
+      console.log('📝 Login: Setting loading to false');
       setIsLoading(false);
     }
   };

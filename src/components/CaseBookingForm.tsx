@@ -1,16 +1,14 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CaseBooking, SURGERY_SETS, IMPLANT_BOXES, PROCEDURE_TYPE_MAPPINGS } from '../types';
-import { saveCase, generateCaseReferenceNumber, getCategorizedSets, getAllProcedureTypes } from '../utils/storage';
+import { getCategorizedSets, getAllProcedureTypes } from '../utils/storage';
 import { caseService } from '../services';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { 
-  getHospitals, 
   getHospitalsForCountry,
   getDepartments, 
-  getCodeTables, 
-  initializeCodeTables,
   getDepartmentNamesForUser
 } from '../utils/codeTable';
+import { DatabaseError } from '../utils/errorHandler';
 import MultiSelectDropdown from './MultiSelectDropdown';
 import TimePicker from './common/TimePicker';
 import SearchableDropdown from './SearchableDropdown';
@@ -25,7 +23,10 @@ interface CaseBookingFormProps {
 }
 
 const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) => {
+  const { user } = useAuth();
   const { modal, closeModal, showConfirm, showSuccess, showError } = useModal();
+  
+  const memoizedShowError = useCallback(showError, [showError]);
   const getDefaultDate = () => {
     return addDaysForInput(3);
   };
@@ -46,97 +47,144 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [availableProcedureTypes, setAvailableProcedureTypes] = useState<string[]>([]);
   const [availableHospitals, setAvailableHospitals] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // Load dynamic procedure types and initialize code tables on component mount
+  // Load dynamic procedure types and hospitals from Supabase
   useEffect(() => {
-    initializeCodeTables();
-    const currentUser = getCurrentUser();
-    const userCountry = currentUser?.selectedCountry || 'Singapore';
-    console.log('🏥 CaseBookingForm - Current User:', currentUser);
-    console.log('🌍 CaseBookingForm - User Country:', userCountry);
-    
-    const allTypes = getAllProcedureTypes(userCountry);
-    setAvailableProcedureTypes(allTypes.sort());
-    
-    // Load hospitals from country-specific code tables
-    if (userCountry) {
-      const hospitals = getHospitalsForCountry(userCountry);
-      console.log('🏥 CaseBookingForm - Hospitals for', userCountry, ':', hospitals);
-      setAvailableHospitals(hospitals.sort());
-    } else {
-      // Fallback to global hospitals if no country selected
-      const hospitals = getHospitals();
-      console.log('🏥 CaseBookingForm - Global hospitals fallback:', hospitals);
-      setAvailableHospitals(hospitals.sort());
-    }
-  }, []);
-
-  const surgerySetOptions = useMemo(() => {
-    if (!formData.procedureType) {
-      return [...SURGERY_SETS].sort();
-    }
-    
-    // Try to get from categorized sets first
-    const currentUser = getCurrentUser();
-    const userCountry = currentUser?.selectedCountry || 'Singapore';
-    const categorizedSets = getCategorizedSets(userCountry);
-    if (categorizedSets[formData.procedureType]?.surgerySets?.length > 0) {
-      return categorizedSets[formData.procedureType].surgerySets.sort();
-    }
-    
-    // Fallback to static mapping
-    const mapping = PROCEDURE_TYPE_MAPPINGS[formData.procedureType as keyof typeof PROCEDURE_TYPE_MAPPINGS];
-    return mapping ? [...mapping.surgerySets].sort() : [...SURGERY_SETS].sort();
-  }, [formData.procedureType]);
-
-  const implantBoxOptions = useMemo(() => {
-    if (!formData.procedureType) {
-      return [...IMPLANT_BOXES].sort();
-    }
-    
-    // Try to get from categorized sets first
-    const currentUser = getCurrentUser();
-    const userCountry = currentUser?.selectedCountry || 'Singapore';
-    const categorizedSets = getCategorizedSets(userCountry);
-    if (categorizedSets[formData.procedureType]?.implantBoxes?.length > 0) {
-      return categorizedSets[formData.procedureType].implantBoxes.sort();
-    }
-    
-    // Fallback to static mapping
-    const mapping = PROCEDURE_TYPE_MAPPINGS[formData.procedureType as keyof typeof PROCEDURE_TYPE_MAPPINGS];
-    return mapping ? [...mapping.implantBoxes].sort() : [...IMPLANT_BOXES].sort();
-  }, [formData.procedureType]);
-
-  const availableDepartments = useMemo(() => {
-    const currentUser = getCurrentUser();
-    if (!currentUser) {
-      return getDepartments().sort();
-    }
-    
-    // Get departments for user's current country
-    const userCountry = currentUser.selectedCountry || currentUser.countries?.[0];
-    if (userCountry) {
-      // Load country-specific departments from Code Table Setup
-      const countryDepartments = getCodeTables(userCountry);
-      const departmentsTable = countryDepartments.find(table => table.id === 'departments');
-      const countrySpecificDepts = departmentsTable?.items || [];
-      
-      // Admin and IT users can access all departments for their country
-      if (currentUser.role === 'admin' || currentUser.role === 'it') {
-        return countrySpecificDepts.sort();
+    const loadData = async () => {
+      if (!user) {
+        console.log('🏥 CaseBookingForm - No user available, skipping data load');
+        return;
       }
       
-      // Other users are restricted to their assigned departments
-      const userDepartments = currentUser.departments || [];
+      setLoading(true);
+      setConnectionError(null);
       
-      // Handle both legacy and new country-specific department formats
-      const userDepartmentNames = getDepartmentNamesForUser(userDepartments, [userCountry]);
-      return countrySpecificDepts.filter(dept => userDepartmentNames.includes(dept)).sort();
-    }
+      try {
+        const userCountry = user.selectedCountry || 'Singapore';
+        console.log('🏥 CaseBookingForm - Current User:', user);
+        console.log('🌍 CaseBookingForm - User Country:', userCountry);
+        
+        // Load procedure types from Supabase ONLY
+        const allTypes = await getAllProcedureTypes(userCountry);
+        setAvailableProcedureTypes(allTypes.sort());
+        
+        // Load hospitals from Supabase ONLY
+        const hospitals = await getHospitalsForCountry(userCountry);
+        console.log('🏥 CaseBookingForm - Hospitals for', userCountry, ':', hospitals);
+        setAvailableHospitals(hospitals.sort());
+        
+      } catch (error) {
+        console.error('Error loading form data:', error);
+        if (error instanceof DatabaseError) {
+          setConnectionError(error.message);
+          memoizedShowError('Form Setup Error', error.message);
+        } else {
+          setConnectionError('Unable to load form data. Please check your connection.');
+          memoizedShowError('Connection Error', 'Unable to load form data. Please check your connection and try again.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    // Fallback to global departments
-    return getDepartments().sort();
-  }, []);
+    loadData();
+  }, [user, memoizedShowError]);
+
+  const [surgerySetOptions, setSurgerySetOptions] = useState<string[]>([]);
+  const [implantBoxOptions, setImplantBoxOptions] = useState<string[]>([]);
+  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
+  
+  // Load surgery sets and implant boxes when procedure type changes
+  useEffect(() => {
+    const loadSetsAndBoxes = async () => {
+      if (!formData.procedureType) {
+        setSurgerySetOptions([...SURGERY_SETS].sort());
+        setImplantBoxOptions([...IMPLANT_BOXES].sort());
+        return;
+      }
+      
+      const userCountry = user?.selectedCountry || 'Singapore';
+      
+      try {
+        const categorizedSets = await getCategorizedSets(userCountry);
+        
+        // Surgery Sets
+        if (categorizedSets[formData.procedureType]?.surgerySets?.length > 0) {
+          setSurgerySetOptions(categorizedSets[formData.procedureType].surgerySets.sort());
+        } else {
+          const mapping = PROCEDURE_TYPE_MAPPINGS[formData.procedureType as keyof typeof PROCEDURE_TYPE_MAPPINGS];
+          setSurgerySetOptions(mapping ? [...mapping.surgerySets].sort() : [...SURGERY_SETS].sort());
+        }
+        
+        // Implant Boxes
+        if (categorizedSets[formData.procedureType]?.implantBoxes?.length > 0) {
+          setImplantBoxOptions(categorizedSets[formData.procedureType].implantBoxes.sort());
+        } else {
+          const mapping = PROCEDURE_TYPE_MAPPINGS[formData.procedureType as keyof typeof PROCEDURE_TYPE_MAPPINGS];
+          setImplantBoxOptions(mapping ? [...mapping.implantBoxes].sort() : [...IMPLANT_BOXES].sort());
+        }
+      } catch (error) {
+        console.error('Error loading categorized sets:', error);
+        // Fallback to static mapping
+        const mapping = PROCEDURE_TYPE_MAPPINGS[formData.procedureType as keyof typeof PROCEDURE_TYPE_MAPPINGS];
+        setSurgerySetOptions(mapping ? [...mapping.surgerySets].sort() : [...SURGERY_SETS].sort());
+        setImplantBoxOptions(mapping ? [...mapping.implantBoxes].sort() : [...IMPLANT_BOXES].sort());
+      }
+    };
+    
+    loadSetsAndBoxes();
+  }, [formData.procedureType]);
+
+
+  // Load departments when component mounts
+  useEffect(() => {
+    const loadDepartments = async () => {
+      if (!user) {
+        try {
+          const departments = await getDepartments();
+          setAvailableDepartments(departments.sort());
+        } catch (error) {
+          console.error('Error loading departments:', error);
+          setAvailableDepartments([]);
+        }
+        return;
+      }
+      
+      const userCountry = user.selectedCountry || user.countries?.[0];
+      if (userCountry) {
+        try {
+          // Get departments for user's country
+          const countryDepartments = await getDepartments(undefined, userCountry);
+          
+          if (user.role === 'admin' || user.role === 'it') {
+            setAvailableDepartments(countryDepartments.sort());
+          } else {
+            const userDepartments = user.departments || [];
+            const userDepartmentNames = await getDepartmentNamesForUser(userDepartments, [userCountry]);
+            setAvailableDepartments(countryDepartments.filter(dept => userDepartmentNames.includes(dept)).sort());
+          }
+        } catch (error) {
+          console.error('Error loading departments:', error);
+          if (error instanceof DatabaseError) {
+            memoizedShowError('Department Loading Error', error.message);
+          }
+          setAvailableDepartments([]);
+        }
+      } else {
+        try {
+          const departments = await getDepartments();
+          setAvailableDepartments(departments.sort());
+        } catch (error) {
+          console.error('Error loading departments:', error);
+          setAvailableDepartments([]);
+        }
+      }
+    };
+    
+    loadDepartments();
+  }, [user, memoizedShowError]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -206,36 +254,31 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
       return;
     }
 
-    const currentUser = getCurrentUser();
-    if (!currentUser) {
+    if (!user) {
       showError('You must be logged in to submit a case');
       return;
     }
 
-    const caseReferenceNumber = generateCaseReferenceNumber();
+    const caseReferenceNumber = await caseService.generateCaseReferenceNumber();
     
     const newCase: CaseBooking = {
       id: Date.now().toString(),
       caseReferenceNumber,
       ...formData,
       status: 'Case Booked',
-      submittedBy: currentUser.name,
+      submittedBy: user.name,
       submittedAt: new Date().toISOString(),
-      country: currentUser.selectedCountry || 'Singapore'
+      country: user.selectedCountry || 'Singapore'
     };
 
-    // Always save to localStorage first (guaranteed success)
-    saveCase(newCase);
-    console.log('✅ Case saved to localStorage:', newCase.caseReferenceNumber);
-    
-    // Attempt to save to Supabase, but don't fail if it doesn't work
+    // Save directly to Supabase only
     try {
       await caseService.saveCase(newCase);
-      console.log('✅ Case also saved to Supabase:', newCase.caseReferenceNumber);
+      console.log('✅ Case saved to Supabase:', newCase.caseReferenceNumber);
     } catch (error) {
-      console.error('⚠️ Failed to save case to Supabase (saved to localStorage only):', error);
-      showError('Case saved locally but failed to sync online. It will be synced automatically later.');
-      // Don't return here - continue with the success flow since we have the case in localStorage
+      console.error('❌ Failed to save case to Supabase:', error);
+      showError('Failed to submit case. Please check your connection and try again.');
+      return;
     }
     
     // Send email notification for new case
@@ -264,6 +307,48 @@ const CaseBookingForm: React.FC<CaseBookingFormProps> = ({ onCaseSubmitted }) =>
 
     onCaseSubmitted();
   };
+
+  if (loading) {
+    return (
+      <div className="case-booking-form">
+        <div className="card-header">
+          <h2 className="card-title">New Case Booking</h2>
+          <p className="card-subtitle">Loading form data...</p>
+        </div>
+        <div className="card-content">
+          <div className="loading-spinner">
+            <div className="spinner"></div>
+            <p>Loading hospitals, departments, and procedure types...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (connectionError) {
+    return (
+      <div className="case-booking-form">
+        <div className="card-header">
+          <h2 className="card-title">New Case Booking</h2>
+          <p className="card-subtitle">Unable to load form</p>
+        </div>
+        <div className="card-content">
+          <div className="error-state">
+            <div className="error-icon">⚠️</div>
+            <h3>Connection Error</h3>
+            <p>{connectionError}</p>
+            <button 
+              type="button" 
+              className="btn btn-primary"
+              onClick={() => window.location.reload()}
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="case-booking-form">

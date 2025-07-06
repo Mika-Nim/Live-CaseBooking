@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { hasPermission } from '../data/permissionMatrixData';
 import { useToast } from './ToastContainer';
 import { useSound } from '../contexts/SoundContext';
@@ -42,8 +42,7 @@ const CodeTableSetup: React.FC<CodeTableSetupProps> = () => {
 
   const { showSuccess } = useToast();
   const { playSound } = useSound();
-  
-  const currentUser = getCurrentUser();
+  const { user: currentUser } = useAuth();
   const canManageCodeTables = currentUser ? hasPermission(currentUser.role, 'code-table-setup') : false;
   const canManageGlobalTables = currentUser ? hasPermission(currentUser.role, 'global-tables') : false;
 
@@ -75,7 +74,7 @@ const CodeTableSetup: React.FC<CodeTableSetupProps> = () => {
         initializeCodeTables();
         
         // Load global tables to get available countries
-        const globalTablesData = getCodeTables(); // No country parameter for global
+        const globalTablesData = await getCodeTables(); // No country parameter for global
         const countriesTable = globalTablesData.find(t => t.id === 'countries');
         
         // Use countries from Global-Tables, fallback to COUNTRIES constant if empty
@@ -113,7 +112,7 @@ const CodeTableSetup: React.FC<CodeTableSetupProps> = () => {
         initializeCodeTables();
         
         // Load ALL tables from global storage (includes countries, hospitals, departments)
-        const allTablesData = getCodeTables(); // Gets all default tables from global storage
+        const allTablesData = await getCodeTables(); // Gets all default tables from global storage
         
         // Categorize tables into global and country-based using helper function
         const { global: globalOnly } = categorizeCodeTables(allTablesData);
@@ -135,7 +134,7 @@ const CodeTableSetup: React.FC<CodeTableSetupProps> = () => {
           initializeCountryCodeTables(selectedCountry);
           
           // Load country-based tables (hospitals, departments) from country-specific storage
-          const countryTablesData = getCodeTables(selectedCountry);
+          const countryTablesData = await getCodeTables(selectedCountry);
           const filteredCountryTables = getFilteredTablesForUser(countryTablesData, currentUser);
           
           // Set country-based tables
@@ -501,10 +500,10 @@ const CodeTableSetup: React.FC<CodeTableSetupProps> = () => {
                 <h4>🌍 No Global Tables Available</h4>
                 <p>Global tables are being loaded or there are no global tables configured.</p>
                 <button 
-                  onClick={() => {
+                  onClick={async () => {
                     initializeCodeTables();
                     // Force reload tables without full page refresh
-                    const globalTablesData = getCodeTables();
+                    const globalTablesData = await getCodeTables();
                     const { global: globalOnly } = categorizeCodeTables(globalTablesData);
                     const filteredGlobalTables = getFilteredTablesForUser(globalOnly, currentUser);
                     setGlobalTables(filteredGlobalTables);
@@ -523,14 +522,14 @@ const CodeTableSetup: React.FC<CodeTableSetupProps> = () => {
                 }</p>
                 {selectedCountry && (
                   <button 
-                    onClick={() => {
+                    onClick={async () => {
                       initializeCountryCodeTables(selectedCountry);
                       // Force reload tables without full page refresh
-                      const countryTablesData = getCodeTables(selectedCountry);
+                      const countryTablesData = await getCodeTables(selectedCountry);
                       const filteredCountryTables = getFilteredTablesForUser(countryTablesData, currentUser);
                       setCountryBasedTables(filteredCountryTables);
                       
-                      const globalTablesData = getCodeTables();
+                      const globalTablesData = await getCodeTables();
                       const { global: globalOnly } = categorizeCodeTables(globalTablesData);
                       const filteredGlobalTables = getFilteredTablesForUser(globalOnly, currentUser);
                       setGlobalTables(filteredGlobalTables);

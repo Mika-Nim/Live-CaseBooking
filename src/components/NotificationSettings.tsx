@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface NotificationPreferences {
   statusUpdates: boolean;
@@ -37,8 +37,8 @@ const defaultPreferences: NotificationPreferences = {
 };
 
 const NotificationSettings: React.FC<NotificationSettingsProps> = ({ isOpen, onClose }) => {
+  const { user: currentUser } = useAuth();
   const [preferences, setPreferences] = useState<NotificationPreferences>(defaultPreferences);
-  const [currentUser] = useState(getCurrentUser());
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Load saved preferences

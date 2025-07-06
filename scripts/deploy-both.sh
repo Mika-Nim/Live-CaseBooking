@@ -10,8 +10,10 @@ echo "============================================"
 DEV_REPO="git@github.com:Mika-Nim/TM-Case-Booking.git"
 PROD_REPO="git@github.com:Mika-Nim/Live-CaseBooking.git"
 VERSION=$(grep '"version"' package.json | cut -d'"' -f4)
+VERSION_BRANCH="Version-${VERSION}"
 
 echo "📦 Current version: $VERSION"
+echo "🌿 Version branch: $VERSION_BRANCH"
 echo "🧪 Development repository: $DEV_REPO"
 echo "🚀 Production repository: $PROD_REPO"
 echo ""
@@ -20,11 +22,12 @@ echo ""
 echo "⚠️  You are about to deploy to BOTH environments!"
 echo ""
 echo "This will:"
-echo "  1. Commit current development changes"
-echo "  2. Push to Development repository (with development config)"
-echo "  3. Build production version with production Supabase config"
-echo "  4. Deploy to Production repository (GitHub Pages)"
-echo "  5. Restore development environment"
+echo "  1. Create and push version branch: $VERSION_BRANCH"
+echo "  2. Commit current development changes"
+echo "  3. Push to Development repository (with development config)"
+echo "  4. Build production version with production Supabase config"
+echo "  5. Deploy to Production repository (GitHub Pages)"
+echo "  6. Restore development environment"
 echo ""
 echo "Are you sure you want to continue? (y/N)"
 read -r response
@@ -44,9 +47,78 @@ cp README.md README.dev.backup
 echo "✅ Environment saved"
 echo "   Current branch: $CURRENT_BRANCH"
 
-# Step 2: Commit and push to Development
+# Step 2: Create and push version branch
 echo ""
-echo "🧪 Step 2: Deploying to Development..."
+echo "🌿 Step 2: Creating version branch..."
+
+# Create version branch from current state
+echo "📝 Creating version branch: $VERSION_BRANCH"
+git checkout -b "$VERSION_BRANCH" || {
+    # If branch already exists, switch to it and update
+    echo "📍 Version branch exists, switching to it..."
+    git checkout "$VERSION_BRANCH" || {
+        echo "❌ Failed to create/switch to version branch"
+        exit 1
+    }
+    
+    # Merge latest development changes
+    echo "🔄 Merging latest development changes..."
+    git merge development --no-edit || {
+        echo "❌ Failed to merge development changes"
+        exit 1
+    }
+}
+
+# Commit any uncommitted changes to version branch
+if ! git diff-index --quiet HEAD --; then
+    echo "📝 Committing changes to version branch..."
+    git add .
+    git commit -m "Version $VERSION - $(date '+%Y-%m-%d %H:%M:%S')
+
+Complete feature set and bug fixes for version $VERSION
+Ready for production deployment
+
+🚀 Features included:
+- All development work up to v$VERSION
+- Supabase full integration
+- Multi-user authentication
+- Case management system
+- Real-time notifications" || {
+        echo "❌ Version branch commit failed"
+        exit 1
+    }
+fi
+
+# Push version branch to both repositories
+echo "📤 Pushing version branch to development repository..."
+git push origin "$VERSION_BRANCH" || {
+    echo "❌ Failed to push version branch to development"
+    exit 1
+}
+
+echo "📤 Pushing version branch to production repository..."
+# Set up production remote if not exists
+if ! git remote get-url production > /dev/null 2>&1; then
+    git remote add production "$PROD_REPO"
+fi
+git push production "$VERSION_BRANCH" || {
+    echo "❌ Failed to push version branch to production"
+    exit 1
+}
+
+echo "✅ Version branch created and pushed!"
+echo "🌿 Branch: $VERSION_BRANCH"
+
+# Switch back to development branch
+echo "📍 Switching back to development branch..."
+git checkout development || {
+    echo "❌ Failed to switch back to development branch"
+    exit 1
+}
+
+# Step 3: Commit and push to Development
+echo ""
+echo "🧪 Step 3: Deploying to Development..."
 
 # Ensure we're on development branch
 if [ "$CURRENT_BRANCH" != "development" ]; then
@@ -95,9 +167,9 @@ git push origin development || {
 echo "✅ Development deployment completed!"
 echo "🔗 Development repository: https://github.com/Mika-Nim/TM-Case-Booking"
 
-# Step 3: Prepare and deploy to Production
+# Step 4: Prepare and deploy to Production
 echo ""
-echo "🚀 Step 3: Deploying to Production..."
+echo "🚀 Step 4: Deploying to Production..."
 
 # Set production environment and configuration
 echo "🔧 Setting production environment..."
@@ -161,9 +233,9 @@ echo "✅ Production deployment completed!"
 echo "🔗 Production repository: https://github.com/Mika-Nim/Live-CaseBooking"
 echo "🌐 Live URL: https://mika-nim.github.io/Live-CaseBooking/"
 
-# Step 4: Restore development environment
+# Step 5: Restore development environment
 echo ""
-echo "🔄 Step 4: Restoring development environment..."
+echo "🔄 Step 5: Restoring development environment..."
 
 # Restore development files
 cp .env.development .env
@@ -186,9 +258,9 @@ rm -f .env.backup README.dev.backup
 
 echo "✅ Development environment restored!"
 
-# Step 5: Final verification
+# Step 6: Final verification
 echo ""
-echo "🔍 Step 5: Final verification..."
+echo "🔍 Step 6: Final verification..."
 
 # Verify production deployment
 echo "🌐 Checking production site..."
@@ -203,6 +275,7 @@ fi
 echo ""
 echo "📋 Deployment Summary:"
 echo "======================"
+echo "✅ Version branch: $VERSION_BRANCH created and pushed to both repos"
 echo "✅ Development repository: Updated and pushed"
 echo "✅ Production repository: Updated and deployed"
 echo "✅ Development environment: Restored"
@@ -211,6 +284,10 @@ echo "🔗 URLs:"
 echo "   Development: https://github.com/Mika-Nim/TM-Case-Booking"
 echo "   Production: https://github.com/Mika-Nim/Live-CaseBooking"
 echo "   Live Site: https://mika-nim.github.io/Live-CaseBooking/"
+echo ""
+echo "🌿 Version Branch URLs:"
+echo "   Development: https://github.com/Mika-Nim/TM-Case-Booking/tree/$VERSION_BRANCH"
+echo "   Production: https://github.com/Mika-Nim/Live-CaseBooking/tree/$VERSION_BRANCH"
 echo ""
 echo "🗃️ Database Connections:"
 echo "   Development: puppogbxzkppdesjvhev.supabase.co (current)"

@@ -3,7 +3,7 @@ import { PROCEDURE_TYPES, COUNTRIES } from '../../types';
 import { getCountries } from '../../utils/codeTable';
 import { useToast } from '../ToastContainer';
 import { useSound } from '../../contexts/SoundContext';
-import { getCurrentUser } from '../../utils/auth';
+import { useAuth } from '../../contexts/AuthContext';
 import { hasPermission, PERMISSION_ACTIONS } from '../../utils/permissions';
 import { EditSetsProps, CategorizedSets, DraggedItem } from './types';
 import { validateItemName } from './validation';
@@ -13,13 +13,16 @@ import {
   getCategorizedSets, 
   getAllProcedureTypes, 
   addCustomProcedureType, 
-  removeCustomProcedureType
+  removeCustomProcedureType,
+  saveSurgerySetToSupabase,
+  saveImplantBoxToSupabase
 } from '../../utils/storage';
 import SetsList from './SetsList';
 import CustomModal from '../CustomModal';
 import { useModal } from '../../hooks/useModal';
 
 const EditSets: React.FC<EditSetsProps> = () => {
+  const { user } = useAuth();
   const { modal, closeModal, showConfirm } = useModal();
   const [categorizedSets, setCategorizedSets] = useState<CategorizedSets>({});
   const [selectedProcedureType, setSelectedProcedureType] = useState<string>(PROCEDURE_TYPES[0]);
@@ -44,46 +47,64 @@ const EditSets: React.FC<EditSetsProps> = () => {
   const { showError, showSuccess } = useToast();
   const { playSound } = useSound();
   
-  const currentUser = getCurrentUser();
-  const canManageProcedureTypes = currentUser ? hasPermission(currentUser.role, PERMISSION_ACTIONS.EDIT_SETS) : false;
-  const userCountry = currentUser?.selectedCountry || currentUser?.countries?.[0];
-  const isAdmin = currentUser?.role === 'admin';
+  const canManageProcedureTypes = user ? hasPermission(user.role, PERMISSION_ACTIONS.EDIT_SETS) : false;
+  const userCountry = user?.selectedCountry || user?.countries?.[0];
+  const isAdmin = user?.role === 'admin';
   
   // Use selected country for Admin, otherwise use user's country
   const activeCountry = isAdmin && selectedCountry ? selectedCountry : userCountry;
 
   // Load countries from Global-Table and initialize selected country for Admin users
   useEffect(() => {
-    const globalCountries = getCountries();
-    const countries = globalCountries.length > 0 ? globalCountries : [...COUNTRIES];
-    setAvailableCountries(countries);
-    
-    if (isAdmin && !selectedCountry) {
-      setSelectedCountry(userCountry || countries[0]);
-    }
+    const loadCountries = async () => {
+      try {
+        const globalCountries = await getCountries();
+        const countries = globalCountries.length > 0 ? globalCountries : [...COUNTRIES];
+        setAvailableCountries(countries);
+        
+        if (isAdmin && !selectedCountry) {
+          setSelectedCountry(userCountry || countries[0]);
+        }
+      } catch (error) {
+        console.error('Error loading countries:', error);
+        const fallbackCountries = [...COUNTRIES];
+        setAvailableCountries(fallbackCountries);
+        
+        if (isAdmin && !selectedCountry) {
+          setSelectedCountry(userCountry || fallbackCountries[0]);
+        }
+      }
+    };
+    loadCountries();
   }, [isAdmin, selectedCountry, userCountry]);
 
   // Load all procedure types on component mount
   useEffect(() => {
-    const allTypes = getAllProcedureTypes(activeCountry);
-    setAllProcedureTypes(allTypes);
-    
-    // Update selected procedure type if it doesn't exist in the loaded types
-    if (!allTypes.includes(selectedProcedureType)) {
-      setSelectedProcedureType(allTypes[0] || PROCEDURE_TYPES[0]);
-    }
+    const loadData = async () => {
+      const allTypes = await getAllProcedureTypes(activeCountry);
+      setAllProcedureTypes(allTypes);
+      
+      // Update selected procedure type if it doesn't exist in the loaded types
+      if (!allTypes.includes(selectedProcedureType)) {
+        setSelectedProcedureType(allTypes[0] || PROCEDURE_TYPES[0]);
+      }
+    };
+    loadData();
   }, [selectedProcedureType, activeCountry]);
 
   // Initialize categorized sets on component mount
   useEffect(() => {
-    const storedSets = getCategorizedSets(activeCountry);
-    if (Object.keys(storedSets).length > 0) {
-      setCategorizedSets(storedSets);
-    } else {
-      const initialSets = initializeCategorizedSets();
-      setCategorizedSets(initialSets);
-      saveCategorizedSets(initialSets, activeCountry);
-    }
+    const loadSets = async () => {
+      const storedSets = await getCategorizedSets(activeCountry);
+      if (Object.keys(storedSets).length > 0) {
+        setCategorizedSets(storedSets);
+      } else {
+        const initialSets = initializeCategorizedSets();
+        setCategorizedSets(initialSets);
+        saveCategorizedSets(initialSets, activeCountry);
+      }
+    };
+    loadSets();
   }, [activeCountry]);
 
   // Save categorized sets to localStorage whenever they change
@@ -94,7 +115,7 @@ const EditSets: React.FC<EditSetsProps> = () => {
   }, [categorizedSets, activeCountry]);
 
   // Procedure Type Management Functions
-  const handleAddProcedureType = () => {
+  const handleAddProcedureType = async () => {
     const trimmedName = newProcedureTypeName.trim();
     
     if (!trimmedName) {
@@ -120,7 +141,7 @@ const EditSets: React.FC<EditSetsProps> = () => {
     // Add to localStorage
     if (addCustomProcedureType(trimmedName, activeCountry)) {
       // Update local state
-      const updatedTypes = getAllProcedureTypes(activeCountry);
+      const updatedTypes = await getAllProcedureTypes(activeCountry);
       setAllProcedureTypes(updatedTypes);
       
       // Initialize empty sets for the new procedure type
@@ -150,10 +171,10 @@ const EditSets: React.FC<EditSetsProps> = () => {
   const handleDeleteProcedureType = (typeName: string) => {
     const confirmMessage = `Are you sure you want to delete "${typeName}"?\n\nThis will remove all associated surgery sets and implant boxes. This action cannot be undone.`;
     
-    showConfirm('Delete Procedure Type', confirmMessage, () => {
+    showConfirm('Delete Procedure Type', confirmMessage, async () => {
       if (removeCustomProcedureType(typeName, activeCountry)) {
         // Update local state
-        const updatedTypes = getAllProcedureTypes(activeCountry);
+        const updatedTypes = await getAllProcedureTypes(activeCountry);
         setAllProcedureTypes(updatedTypes);
         
         // Remove from categorized sets for all types (base and custom)
@@ -180,7 +201,7 @@ const EditSets: React.FC<EditSetsProps> = () => {
   };
 
 
-  const handleAddSurgerySet = () => {
+  const handleAddSurgerySet = async () => {
     const validation = validateItemName(
       newSurgerySetName,
       'surgery',
@@ -197,21 +218,31 @@ const EditSets: React.FC<EditSetsProps> = () => {
     }
 
     const trimmedName = newSurgerySetName.trim();
-    setCategorizedSets(prev => ({
-      ...prev,
-      [selectedProcedureType]: {
-        ...prev[selectedProcedureType],
-        surgerySets: [...prev[selectedProcedureType].surgerySets, trimmedName]
-      }
-    }));
     
-    setNewSurgerySetName('');
-    setShowAddSurgerySet(false);
-    playSound.success();
-    showSuccess('Surgery Set Added', `"${trimmedName}" has been added to ${selectedProcedureType}`);
+    // Save to Supabase first
+    try {
+      await saveSurgerySetToSupabase(trimmedName, selectedProcedureType, activeCountry);
+      
+      // Update local state only after successful Supabase save
+      setCategorizedSets(prev => ({
+        ...prev,
+        [selectedProcedureType]: {
+          ...(prev[selectedProcedureType] || { surgerySets: [], implantBoxes: [] }),
+          surgerySets: [...(prev[selectedProcedureType]?.surgerySets || []), trimmedName]
+        }
+      }));
+      
+      setNewSurgerySetName('');
+      setShowAddSurgerySet(false);
+      playSound.success();
+      showSuccess('Surgery Set Added', `"${trimmedName}" has been added to ${selectedProcedureType} and saved to database`);
+    } catch (error) {
+      playSound.error();
+      showError('Database Error', 'Failed to save surgery set to database. Please try again.');
+    }
   };
 
-  const handleAddImplantBox = () => {
+  const handleAddImplantBox = async () => {
     const validation = validateItemName(
       newImplantBoxName,
       'implant',
@@ -228,18 +259,28 @@ const EditSets: React.FC<EditSetsProps> = () => {
     }
 
     const trimmedName = newImplantBoxName.trim();
-    setCategorizedSets(prev => ({
-      ...prev,
-      [selectedProcedureType]: {
-        ...prev[selectedProcedureType],
-        implantBoxes: [...prev[selectedProcedureType].implantBoxes, trimmedName]
-      }
-    }));
     
-    setNewImplantBoxName('');
-    setShowAddImplantBox(false);
-    playSound.success();
-    showSuccess('Implant Box Added', `"${trimmedName}" has been added to ${selectedProcedureType}`);
+    // Save to Supabase first
+    try {
+      await saveImplantBoxToSupabase(trimmedName, selectedProcedureType, activeCountry);
+      
+      // Update local state only after successful Supabase save
+      setCategorizedSets(prev => ({
+        ...prev,
+        [selectedProcedureType]: {
+          ...(prev[selectedProcedureType] || { surgerySets: [], implantBoxes: [] }),
+          implantBoxes: [...(prev[selectedProcedureType]?.implantBoxes || []), trimmedName]
+        }
+      }));
+      
+      setNewImplantBoxName('');
+      setShowAddImplantBox(false);
+      playSound.success();
+      showSuccess('Implant Box Added', `"${trimmedName}" has been added to ${selectedProcedureType} and saved to database`);
+    } catch (error) {
+      playSound.error();
+      showError('Database Error', 'Failed to save implant box to database. Please try again.');
+    }
   };
 
   const handleEditSurgerySet = (oldName: string, newName: string) => {
@@ -261,8 +302,8 @@ const EditSets: React.FC<EditSetsProps> = () => {
     setCategorizedSets(prev => ({
       ...prev,
       [selectedProcedureType]: {
-        ...prev[selectedProcedureType],
-        surgerySets: prev[selectedProcedureType].surgerySets.map(set => 
+        ...(prev[selectedProcedureType] || { surgerySets: [], implantBoxes: [] }),
+        surgerySets: (prev[selectedProcedureType]?.surgerySets || []).map(set => 
           set === oldName ? trimmedName : set
         )
       }
@@ -293,8 +334,8 @@ const EditSets: React.FC<EditSetsProps> = () => {
     setCategorizedSets(prev => ({
       ...prev,
       [selectedProcedureType]: {
-        ...prev[selectedProcedureType],
-        implantBoxes: prev[selectedProcedureType].implantBoxes.map(box => 
+        ...(prev[selectedProcedureType] || { surgerySets: [], implantBoxes: [] }),
+        implantBoxes: (prev[selectedProcedureType]?.implantBoxes || []).map(box => 
           box === oldName ? trimmedName : box
         )
       }
@@ -313,8 +354,8 @@ const EditSets: React.FC<EditSetsProps> = () => {
       setCategorizedSets(prev => ({
         ...prev,
         [selectedProcedureType]: {
-          ...prev[selectedProcedureType],
-          surgerySets: prev[selectedProcedureType].surgerySets.filter(set => set !== name)
+          ...(prev[selectedProcedureType] || { surgerySets: [], implantBoxes: [] }),
+          surgerySets: (prev[selectedProcedureType]?.surgerySets || []).filter(set => set !== name)
         }
       }));
       
@@ -330,8 +371,8 @@ const EditSets: React.FC<EditSetsProps> = () => {
       setCategorizedSets(prev => ({
         ...prev,
         [selectedProcedureType]: {
-          ...prev[selectedProcedureType],
-          implantBoxes: prev[selectedProcedureType].implantBoxes.filter(box => box !== name)
+          ...(prev[selectedProcedureType] || { surgerySets: [], implantBoxes: [] }),
+          implantBoxes: (prev[selectedProcedureType]?.implantBoxes || []).filter(box => box !== name)
         }
       }));
       

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { COUNTRIES, DEPARTMENTS } from '../types';
 import { getCountries } from '../utils/codeTable';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { hasPermission, PERMISSION_ACTIONS } from '../utils/permissions';
 import { getAllRoles } from '../data/permissionMatrixData';
 import { useSound } from '../contexts/SoundContext';
@@ -72,15 +72,25 @@ const SimplifiedEmailConfig: React.FC = () => {
 
   const { playSound } = useSound();
   const { showSuccess, showError } = useToast();
-  const currentUser = getCurrentUser();
+  const { user: currentUser } = useAuth();
 
   // Check permissions
   const canConfigureEmail = currentUser ? hasPermission(currentUser.role, PERMISSION_ACTIONS.EMAIL_CONFIG) : false;
 
   // Get available countries for admin users
-  const availableCountries = React.useMemo(() => {
-    const globalCountries = getCountries();
-    return globalCountries.length > 0 ? globalCountries : [...COUNTRIES];
+  const [availableCountries, setAvailableCountries] = React.useState<string[]>([...COUNTRIES]);
+  
+  React.useEffect(() => {
+    const loadCountries = async () => {
+      try {
+        const globalCountries = await getCountries();
+        setAvailableCountries(globalCountries.length > 0 ? globalCountries : [...COUNTRIES]);
+      } catch (error) {
+        console.error('Error loading countries:', error);
+        setAvailableCountries([...COUNTRIES]);
+      }
+    };
+    loadCountries();
   }, []);
 
   // Check if user can switch countries (admin only)

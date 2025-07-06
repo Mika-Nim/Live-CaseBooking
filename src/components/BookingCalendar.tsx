@@ -5,8 +5,7 @@ import {
   getDepartmentNamesForUser,
   getCountries
 } from '../utils/codeTable';
-import { getCurrentUser } from '../utils/auth';
-import { getCases, migrateLocalStorageCasesToSupabase } from '../utils/storage';
+import { useAuth } from '../contexts/AuthContext';
 import { CaseBooking, COUNTRIES } from '../types';
 import { caseService } from '../services';
 import SearchableDropdown from './SearchableDropdown';
@@ -19,6 +18,7 @@ interface BookingCalendarProps {
 }
 
 const BookingCalendar: React.FC<BookingCalendarProps> = ({ onCaseClick }) => {
+  const { user: currentUser } = useAuth();
   const [selectedDepartment, setSelectedDepartment] = useState<string>('');
   const [departments, setDepartments] = useState<string[]>([]);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -27,7 +27,6 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onCaseClick }) => {
   const [moreCasesData, setMoreCasesData] = useState<{date: string, cases: CaseBooking[]}>({date: '', cases: []});
   const [moreCasesCurrentPage, setMoreCasesCurrentPage] = useState(1);
   const moreCasesPerPage = 10;
-  const [currentUser, setCurrentUser] = useState(getCurrentUser());
   const [selectedCountry, setSelectedCountry] = useState<string>('');
   const [availableCountries, setAvailableCountries] = useState<string[]>([]);
   const [showDatePickers, setShowDatePickers] = useState(false);
@@ -39,50 +38,76 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onCaseClick }) => {
   const activeCountry = isAdmin && selectedCountry ? selectedCountry : userCountry;
 
   useEffect(() => {
-    const user = getCurrentUser();
-    setCurrentUser(user);
-    
-    // Load countries from Global-Table instead of hardcoded COUNTRIES
-    const globalCountries = getCountries();
-    const countries = globalCountries.length > 0 ? globalCountries : [...COUNTRIES];
-    setAvailableCountries(countries);
-    
-    // Initialize selected country for Admin users
-    if (user?.role === 'admin' && !selectedCountry) {
-      const defaultCountry = user?.selectedCountry || 'Singapore';
-      setSelectedCountry(defaultCountry);
-    }
-    
-    // Get departments for the active country from Code Table Setup
-    const country = isAdmin && selectedCountry ? selectedCountry : (user?.selectedCountry || 'Singapore');
-    if (country) {
-      // Load country-specific departments from Code Table Setup
-      const countryDepartments = getCodeTables(country);
-      const departmentsTable = countryDepartments.find(table => table.id === 'departments');
-      const countrySpecificDepts = departmentsTable?.items || [];
+    const loadData = async () => {
       
-      // Filter by user's assigned departments if not admin
-      let availableDepartments = countrySpecificDepts;
-      if (user?.role !== 'admin' && user?.role !== 'it') {
-        const userDepartments = user?.departments || [];
-        
-        // Handle both legacy and new country-specific department formats
-        const userDepartmentNames = getDepartmentNamesForUser(userDepartments, [country]);
-        availableDepartments = countrySpecificDepts.filter(dept => userDepartmentNames.includes(dept));
+      // Load countries from Supabase
+      try {
+        const globalCountries = await getCountries();
+        setAvailableCountries(globalCountries);
+      } catch (error) {
+        console.error('Error loading countries:', error);
+        setAvailableCountries([...COUNTRIES]);
       }
       
-      setDepartments(availableDepartments.sort());
-      if (availableDepartments.length > 0) {
-        setSelectedDepartment(availableDepartments[0]);
+      // Initialize selected country for Admin users
+      if (user?.role === 'admin' && !selectedCountry) {
+        const defaultCountry = user?.selectedCountry || 'Singapore';
+        setSelectedCountry(defaultCountry);
       }
-    } else {
-      // Fallback to global departments
-      const userDepartments = getDepartments(user?.departments);
-      setDepartments(userDepartments.sort());
-      if (userDepartments.length > 0) {
-        setSelectedDepartment(userDepartments[0]);
+      
+      // Get departments for the active country from Code Table Setup
+      const country = isAdmin && selectedCountry ? selectedCountry : (user?.selectedCountry || 'Singapore');
+      if (country) {
+        try {
+          // Load country-specific departments from Code Table Setup
+          const countryDepartments = await getCodeTables(country);
+          const departmentsTable = countryDepartments.find(table => table.id === 'departments');
+          const countrySpecificDepts = departmentsTable?.items || [];
+          
+          // Filter by user's assigned departments if not admin
+          let availableDepartments = countrySpecificDepts;
+          if (user?.role !== 'admin' && user?.role !== 'it') {
+            const userDepartments = user?.departments || [];
+            
+            // Handle both legacy and new country-specific department formats
+            const userDepartmentNames = await getDepartmentNamesForUser(userDepartments, [country]);
+            availableDepartments = countrySpecificDepts.filter(dept => userDepartmentNames.includes(dept));
+          }
+          
+          setDepartments(availableDepartments.sort());
+          if (availableDepartments.length > 0) {
+            setSelectedDepartment(availableDepartments[0]);
+          }
+        } catch (error) {
+          console.error('Error loading departments:', error);
+          // Fallback to global departments
+          try {
+            const globalDepartments = await getDepartments();
+            setDepartments(globalDepartments.sort());
+            if (globalDepartments.length > 0) {
+              setSelectedDepartment(globalDepartments[0]);
+            }
+          } catch (fallbackError) {
+            console.error('Error loading fallback departments:', fallbackError);
+            setDepartments([]);
+          }
+        }
+      } else {
+        // Fallback to global departments
+        try {
+          const userDepartments = await getDepartments(user?.departments);
+          setDepartments(userDepartments.sort());
+          if (userDepartments.length > 0) {
+            setSelectedDepartment(userDepartments[0]);
+          }
+        } catch (fallbackError) {
+          console.error('Error loading user departments:', fallbackError);
+          setDepartments([]);
+        }
       }
-    }
+    };
+    
+    loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCountry]); // isAdmin is derived from currentUser which is already handled
 
@@ -90,25 +115,11 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({ onCaseClick }) => {
   useEffect(() => {
     const loadCases = async () => {
       try {
-        console.log('📅 BookingCalendar: Loading cases from both localStorage and Supabase');
+        console.log('📅 BookingCalendar: Loading cases from Supabase');
         
-        // First, attempt to migrate any localStorage cases to Supabase
-        await migrateLocalStorageCasesToSupabase();
-        
-        // Load cases from Supabase
-        const supabaseCases = await caseService.getAllCases(true); // Force refresh
-        console.log('📅 BookingCalendar: Loaded', supabaseCases.length, 'cases from Supabase');
-        
-        // Also load any remaining cases from localStorage (in case migration failed)
-        const localStorageCases = getCases();
-        console.log('📅 BookingCalendar: Found', localStorageCases.length, 'cases still in localStorage');
-        
-        // Combine and deduplicate cases (Supabase takes priority)
-        const supabaseRefs = new Set(supabaseCases.map(c => c.caseReferenceNumber));
-        const uniqueLocalCases = localStorageCases.filter(c => !supabaseRefs.has(c.caseReferenceNumber));
-        const allCases = [...supabaseCases, ...uniqueLocalCases];
-        
-        console.log('📅 BookingCalendar: Total combined cases:', allCases.length);
+        // Load cases from Supabase only
+        const allCases = await caseService.getAllCases(true); // Force refresh
+        console.log('📅 BookingCalendar: Loaded', allCases.length, 'cases from Supabase');
         
         const filteredCases = allCases.filter(caseItem => {
           // Filter by active country

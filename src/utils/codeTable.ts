@@ -1,4 +1,6 @@
 import { COUNTRIES, DEPARTMENTS } from '../types';
+import { lookupOperations } from '../services/supabaseService';
+import { withErrorHandling, DatabaseError } from './errorHandler';
 
 export interface CodeTable {
   id: string;
@@ -7,34 +9,105 @@ export interface CodeTable {
   items: string[];
 }
 
-// Get code tables from localStorage with fallback to defaults
-export const getCodeTables = (country?: string): CodeTable[] => {
-  const storageKey = country ? `codeTables-${country}` : 'codeTables';
-  console.log('🔍 getCodeTables called with country:', country, 'storageKey:', storageKey);
-  const storedTables = localStorage.getItem(storageKey);
-  console.log('🔍 localStorage data found:', storedTables ? 'Yes' : 'No');
-  
-  if (storedTables) {
-    try {
-      const parsed = JSON.parse(storedTables);
-      console.log('🔍 Parsed localStorage tables:', parsed);
-      return parsed;
-    } catch (error) {
-      console.error('Error parsing code tables from localStorage:', error);
+// Get code tables from Supabase ONLY - no localStorage fallback for multi-user consistency
+export const getCodeTables = async (country?: string): Promise<CodeTable[]> => {
+  return withErrorHandling(async () => {
+    console.log('🔍 Getting code tables from Supabase for country:', country);
+    
+    const supabaseTables = await getCodeTablesFromSupabase(country);
+    
+    if (supabaseTables.length === 0) {
+      throw new DatabaseError({
+        message: `No code tables found${country ? ` for country: ${country}` : ''}. Please contact your administrator to set up the system data.`
+      }, 'fetch code tables', true);
     }
-  }
+    
+    console.log('✅ Got code tables from Supabase:', supabaseTables.length, 'tables');
+    return supabaseTables;
+  }, {
+    operation: 'fetch code tables',
+    showToUser: true,
+    fallbackMessage: 'Unable to load system configuration. Please check your connection and try again.'
+  });
+};
+
+// Get code tables from Supabase
+const getCodeTablesFromSupabase = async (country?: string): Promise<CodeTable[]> => {
+  const tables: CodeTable[] = [];
   
-  // Return default code tables if none exist
-  if (country) {
-    // For country-specific requests, return only country-based tables
-    const defaultTables = getDefaultCodeTables(country);
-    console.log('🔍 Default tables for country', country, ':', defaultTables);
-    return defaultTables.filter(table => table.id !== 'countries');
-  } else {
-    // For global requests, return all default tables so they can be categorized
-    const defaultTables = getDefaultCodeTables();
-    console.log('🔍 Global default tables:', defaultTables);
-    return defaultTables;
+  try {
+    // Get hospitals
+    const hospitals = await lookupOperations.getHospitals(country);
+    if (hospitals.length > 0) {
+      tables.push({
+        id: 'hospitals',
+        name: 'Hospitals',
+        description: 'List of available hospitals',
+        items: hospitals.map(h => h.name)
+      });
+    }
+    
+    // Get departments
+    const departments = await lookupOperations.getDepartments(country);
+    if (departments.length > 0) {
+      tables.push({
+        id: 'departments',
+        name: 'Departments',
+        description: 'Medical departments',
+        items: departments.map(d => d.name)
+      });
+    }
+    
+    // Get procedure types
+    const procedureTypes = await lookupOperations.getProcedureTypes(country);
+    if (procedureTypes.length > 0) {
+      tables.push({
+        id: 'procedureTypes',
+        name: 'Procedure Types',
+        description: 'Available procedure types',
+        items: procedureTypes.map(p => p.name)
+      });
+    }
+    
+    // Get surgery sets
+    const surgerySets = await lookupOperations.getSurgerySets(country);
+    if (surgerySets.length > 0) {
+      tables.push({
+        id: 'surgerySets',
+        name: 'Surgery Sets',
+        description: 'Available surgery sets',
+        items: surgerySets.map(s => s.name)
+      });
+    }
+    
+    // Get implant boxes
+    const implantBoxes = await lookupOperations.getImplantBoxes(country);
+    if (implantBoxes.length > 0) {
+      tables.push({
+        id: 'implantBoxes',
+        name: 'Implant Boxes',
+        description: 'Available implant boxes',
+        items: implantBoxes.map(i => i.name)
+      });
+    }
+    
+    // Get countries if no specific country requested
+    if (!country) {
+      const countries = await lookupOperations.getCountries();
+      if (countries.length > 0) {
+        tables.push({
+          id: 'countries',
+          name: 'Countries',
+          description: 'Supported countries',
+          items: countries.map(c => c.name)
+        });
+      }
+    }
+    
+    return tables;
+  } catch (error) {
+    console.error('Error getting code tables from Supabase:', error);
+    return [];
   }
 };
 
@@ -64,92 +137,131 @@ export const getDefaultCodeTables = (country?: string): CodeTable[] => {
   ];
 };
 
-// Get specific code table by ID
+// DEPRECATED: These synchronous functions are no longer supported in multi-user environment
+// Use async versions with proper error handling instead
+
+// Get specific code table by ID - DEPRECATED
 export const getCodeTable = (tableId: string): CodeTable | undefined => {
-  const tables = getCodeTables();
-  return tables.find(table => table.id === tableId);
+  console.warn('⚠️ getCodeTable is deprecated. Use async getCodeTables() instead.');
+  return undefined;
 };
 
-// Get items from a specific code table
+// Get items from a specific code table - DEPRECATED  
 export const getCodeTableItems = (tableId: string): string[] => {
-  const table = getCodeTable(tableId);
-  return table?.items || [];
+  console.warn('⚠️ getCodeTableItems is deprecated. Use async code table functions instead.');
+  return [];
 };
 
-// Get hospitals list
+// Get hospitals list - DEPRECATED
 export const getHospitals = (): string[] => {
-  return getCodeTableItems('hospitals');
+  console.warn('⚠️ getHospitals is deprecated. Use async getHospitalsForCountry() instead.');
+  return [];
 };
 
-// Get hospitals list for a specific country
-export const getHospitalsForCountry = (country: string): string[] => {
-  console.log('🔍 getHospitalsForCountry called with country:', country);
-  const countryTables = getCodeTables(country);
-  console.log('🔍 Country tables found:', countryTables);
-  const hospitalTable = countryTables.find(table => table.id === 'hospitals');
-  console.log('🔍 Hospital table found:', hospitalTable);
-  const hospitals = hospitalTable?.items || [];
-  console.log('🔍 Final hospitals list:', hospitals);
-  return hospitals;
-};
-
-// Get departments list with user filtering
-export const getDepartments = (userDepartments?: string[]): string[] => {
-  const allDepartments = getCodeTableItems('departments');
-  
-  // If user has specific departments, filter by those
-  if (userDepartments && userDepartments.length > 0) {
-    return allDepartments.filter(dept => userDepartments.includes(dept));
-  }
-  
-  return allDepartments;
-};
-
-// Get countries list
-export const getCountries = (): string[] => {
-  return getCodeTableItems('countries');
-};
-
-// Get departments by country for User Access Matrix
-export const getDepartmentsByCountry = (): Record<string, string[]> => {
-  const countries = getCountries();
-  const departmentsByCountry: Record<string, string[]> = {};
-  
-  // Get departments for each country from country-specific storage
-  countries.forEach(country => {
-    try {
-      const countryTables = getCodeTables(country);
-      const departmentsTable = countryTables.find(table => table.id === 'departments');
-      departmentsByCountry[country] = departmentsTable?.items || [];
-    } catch (error) {
-      console.error(`Error loading departments for ${country}:`, error);
-      departmentsByCountry[country] = [];
+// Get hospitals list for a specific country - Supabase ONLY
+export const getHospitalsForCountry = async (country: string): Promise<string[]> => {
+  return withErrorHandling(async () => {
+    console.log('🔍 Getting hospitals for country:', country);
+    
+    const hospitals = await lookupOperations.getHospitals(country);
+    
+    if (hospitals.length === 0) {
+      console.warn(`⚠️ No hospitals found for ${country}. This country may not be set up yet.`);
+      return []; // Return empty array instead of throwing error
     }
+    
+    console.log('✅ Got hospitals from Supabase:', hospitals.map(h => h.name));
+    return hospitals.map(h => h.name);
+  }, {
+    operation: 'fetch hospitals',
+    showToUser: true,
+    fallbackMessage: `Unable to load hospitals for ${country}. Please try again.`
   });
-  
-  return departmentsByCountry;
+};
+
+// Get departments list with user filtering - ASYNC
+export const getDepartments = async (userDepartments?: string[], country?: string): Promise<string[]> => {
+  return withErrorHandling(async () => {
+    const allDepartments = await lookupOperations.getDepartments(country);
+    const departmentNames = allDepartments.map(d => d.name);
+    
+    // If user has specific departments, filter by those
+    if (userDepartments && userDepartments.length > 0) {
+      return departmentNames.filter(dept => userDepartments.includes(dept));
+    }
+    
+    return departmentNames;
+  }, {
+    operation: 'fetch departments',
+    showToUser: true,
+    fallbackMessage: `Unable to load departments${country ? ` for ${country}` : ''}. Please try again.`
+  });
+};
+
+// Get countries list - ASYNC
+export const getCountries = async (): Promise<string[]> => {
+  return withErrorHandling(async () => {
+    const countries = await lookupOperations.getCountries();
+    
+    if (countries.length === 0) {
+      throw new DatabaseError({
+        message: 'No countries configured in the system. Please contact your administrator.'
+      }, 'fetch countries', true);
+    }
+    
+    return countries.map(c => c.name);
+  }, {
+    operation: 'fetch countries',
+    showToUser: true,
+    fallbackMessage: 'Unable to load countries. Please try again.'
+  });
+};
+
+// Get departments by country for User Access Matrix - ASYNC
+export const getDepartmentsByCountry = async (): Promise<Record<string, string[]>> => {
+  return withErrorHandling(async () => {
+    // Get all countries first
+    const countries = await lookupOperations.getCountries();
+    const departmentsByCountry: Record<string, string[]> = {};
+    
+    // Get departments for each country
+    for (const country of countries) {
+      try {
+        const departments = await lookupOperations.getDepartments(country.name);
+        departmentsByCountry[country.name] = departments.map(d => d.name);
+      } catch (error) {
+        console.error(`Error loading departments for ${country.name}:`, error);
+        departmentsByCountry[country.name] = [];
+      }
+    }
+    
+    return departmentsByCountry;
+  }, {
+    operation: 'fetch departments by country',
+    showToUser: false
+  });
 };
 
 // Get all departments from all countries (for backward compatibility)
-export const getAllDepartmentsFromAllCountries = (): string[] => {
-  const departmentsByCountry = getDepartmentsByCountry();
+export const getAllDepartmentsFromAllCountries = async (): Promise<string[]> => {
+  const departmentsByCountry = await getDepartmentsByCountry();
   const allDepartments = new Set<string>();
   
   Object.values(departmentsByCountry).forEach(departments => {
-    departments.forEach(dept => allDepartments.add(dept));
+    departments.forEach((dept: string) => allDepartments.add(dept));
   });
   
   return Array.from(allDepartments).sort();
 };
 
 // Get departments for specific countries
-export const getDepartmentsForCountries = (countries: string[]): string[] => {
-  const departmentsByCountry = getDepartmentsByCountry();
+export const getDepartmentsForCountries = async (countries: string[]): Promise<string[]> => {
+  const departmentsByCountry = await getDepartmentsByCountry();
   const departments = new Set<string>();
   
   countries.forEach(country => {
     if (departmentsByCountry[country]) {
-      departmentsByCountry[country].forEach(dept => departments.add(dept));
+      departmentsByCountry[country].forEach((dept: string) => departments.add(dept));
     }
   });
   
@@ -185,38 +297,38 @@ export const getCountryFromDepartmentId = (departmentId: string): string => {
 };
 
 // Convert legacy departments to country-specific format
-export const migrateDepartmentsToCountrySpecific = (
+export const migrateDepartmentsToCountrySpecific = async (
   departments: string[], 
   userCountries: string[]
-): string[] => {
+): Promise<string[]> => {
   const migratedDepartments: string[] = [];
   
-  departments.forEach(dept => {
+  for (const dept of departments) {
     if (isCountrySpecificDepartment(dept)) {
       // Already in new format
       migratedDepartments.push(dept);
     } else {
       // Legacy format - convert to country-specific for each user country
-      userCountries.forEach(country => {
-        const countryDepartments = getDepartmentsForCountries([country]);
+      for (const country of userCountries) {
+        const countryDepartments = await getDepartmentsForCountries([country]);
         if (countryDepartments.includes(dept)) {
           migratedDepartments.push(createCountryDepartmentId(country, dept));
         }
-      });
+      }
     }
-  });
+  }
   
   return migratedDepartments;
 };
 
 // Get departments for display in forms (backward compatible)
-export const getDepartmentNamesForUser = (
+export const getDepartmentNamesForUser = async (
   userDepartments: string[], 
   userCountries: string[]
-): string[] => {
+): Promise<string[]> => {
   const departmentNames = new Set<string>();
   
-  userDepartments.forEach(dept => {
+  for (const dept of userDepartments) {
     if (isCountrySpecificDepartment(dept)) {
       const { country, department } = parseCountryDepartmentId(dept);
       if (userCountries.includes(country)) {
@@ -224,19 +336,19 @@ export const getDepartmentNamesForUser = (
       }
     } else {
       // Legacy department - include if it exists in user's countries
-      const availableDepts = getDepartmentsForCountries(userCountries);
+      const availableDepts = await getDepartmentsForCountries(userCountries);
       if (availableDepts.includes(dept)) {
         departmentNames.add(dept);
       }
     }
-  });
+  }
   
   return Array.from(departmentNames).sort();
 };
 
 // Get countries filtered by user's assigned countries
-export const getUserCountries = (userCountries?: string[]): string[] => {
-  const allCountries = getCountries();
+export const getUserCountries = async (userCountries?: string[]): Promise<string[]> => {
+  const allCountries = await getCountries();
   
   // If user has specific countries, filter by those
   if (userCountries && userCountries.length > 0) {
@@ -317,64 +429,22 @@ export const initializeCountryCodeTables = (country: string): void => {
   }
 };
 
-// Add item to a code table
+// Add item to a code table - DEPRECATED: Use Supabase operations for multi-user consistency
 export const addCodeTableItem = (tableId: string, item: string): boolean => {
-  try {
-    const tables = getCodeTables();
-    const tableIndex = tables.findIndex(table => table.id === tableId);
-    
-    if (tableIndex === -1) return false;
-    
-    // Check if item already exists
-    if (tables[tableIndex].items.includes(item)) return false;
-    
-    tables[tableIndex].items.push(item);
-    saveCodeTables(tables);
-    return true;
-  } catch (error) {
-    console.error('Error adding item to code table:', error);
-    return false;
-  }
+  console.warn('⚠️ addCodeTableItem is deprecated. Use Supabase operations for multi-user consistency.');
+  return false; // Always return false to prevent localStorage modifications
 };
 
-// Remove item from a code table
+// Remove item from a code table - DEPRECATED: Use Supabase operations for multi-user consistency
 export const removeCodeTableItem = (tableId: string, item: string): boolean => {
-  try {
-    const tables = getCodeTables();
-    const tableIndex = tables.findIndex(table => table.id === tableId);
-    
-    if (tableIndex === -1) return false;
-    
-    tables[tableIndex].items = tables[tableIndex].items.filter(i => i !== item);
-    saveCodeTables(tables);
-    return true;
-  } catch (error) {
-    console.error('Error removing item from code table:', error);
-    return false;
-  }
+  console.warn('⚠️ removeCodeTableItem is deprecated. Use Supabase operations for multi-user consistency.');
+  return false; // Always return false to prevent localStorage modifications
 };
 
-// Update item in a code table
+// Update item in a code table - DEPRECATED: Use Supabase operations for multi-user consistency
 export const updateCodeTableItem = (tableId: string, oldItem: string, newItem: string): boolean => {
-  try {
-    const tables = getCodeTables();
-    const tableIndex = tables.findIndex(table => table.id === tableId);
-    
-    if (tableIndex === -1) return false;
-    
-    const itemIndex = tables[tableIndex].items.findIndex(item => item === oldItem);
-    if (itemIndex === -1) return false;
-    
-    // Check if new item already exists (and it's different from old item)
-    if (newItem !== oldItem && tables[tableIndex].items.includes(newItem)) return false;
-    
-    tables[tableIndex].items[itemIndex] = newItem;
-    saveCodeTables(tables);
-    return true;
-  } catch (error) {
-    console.error('Error updating item in code table:', error);
-    return false;
-  }
+  console.warn('⚠️ updateCodeTableItem is deprecated. Use Supabase operations for multi-user consistency.');
+  return false; // Always return false to prevent localStorage modifications
 };
 
 // Get default hospitals for a specific country

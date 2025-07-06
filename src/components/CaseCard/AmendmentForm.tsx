@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { AmendmentFormProps } from './types';
 import { getAllProcedureTypes } from '../../utils/storage';
 import { getDepartments, getHospitalsForCountry, getHospitals } from '../../utils/codeTable';
-import { getCurrentUser } from '../../utils/auth';
+import { useAuth } from '../../contexts/AuthContext';
 import TimePicker from '../common/TimePicker';
 import FilterDatePicker from '../FilterDatePicker';
 import SearchableDropdown from '../SearchableDropdown';
@@ -18,6 +18,7 @@ const AmendmentForm: React.FC<AmendmentFormProps> = ({
   onSave,
   onCancel
 }) => {
+  const { user: currentUser } = useAuth();
   const [formData, setFormData] = useState({
     hospital: caseItem.hospital || '',
     department: caseItem.department || '',
@@ -39,25 +40,32 @@ const AmendmentForm: React.FC<AmendmentFormProps> = ({
   useEffect(() => {
     // Load departments, procedure types, and hospitals
     const loadData = async () => {
-      const depts = getDepartments();
-      const procedures = getAllProcedureTypes();
-      setDepartments(depts);
-      setProcedureTypes(procedures);
+      try {
+        const depts = await getDepartments();
+        const procedures = await getAllProcedureTypes();
+        setDepartments(depts);
+        setProcedureTypes(procedures);
       
-      // Load country-specific hospitals
-      const currentUser = getCurrentUser();
-      const userCountry = currentUser?.selectedCountry || 'Singapore';
-      console.log('🏥 AmendmentForm - Loading hospitals for country:', userCountry);
-      
-      if (userCountry) {
-        const countryHospitals = getHospitalsForCountry(userCountry);
-        console.log('🏥 AmendmentForm - Country-specific hospitals:', countryHospitals);
-        setAvailableHospitals(countryHospitals.sort());
-      } else {
-        // Fallback to global hospitals if no country selected
-        const globalHospitals = getHospitals();
-        console.log('🏥 AmendmentForm - Global hospitals fallback:', globalHospitals);
-        setAvailableHospitals(globalHospitals.sort());
+        // Load country-specific hospitals
+        const userCountry = currentUser?.selectedCountry || 'Singapore';
+        console.log('🏥 AmendmentForm - Loading hospitals for country:', userCountry);
+        
+        if (userCountry) {
+          const countryHospitals = await getHospitalsForCountry(userCountry);
+          console.log('🏥 AmendmentForm - Country-specific hospitals:', countryHospitals);
+          setAvailableHospitals(countryHospitals.sort());
+        } else {
+          // Fallback to global hospitals if no country selected
+          const globalHospitals = await getHospitals();
+          console.log('🏥 AmendmentForm - Global hospitals fallback:', globalHospitals);
+          setAvailableHospitals(globalHospitals.sort());
+        }
+      } catch (error) {
+        console.error('Error loading amendment form data:', error);
+        // Set empty arrays as fallback
+        setDepartments([]);
+        setProcedureTypes([]);
+        setAvailableHospitals([]);
       }
     };
     loadData();

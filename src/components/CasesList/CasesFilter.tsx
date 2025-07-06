@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FilterOptions, COUNTRIES } from '../../types';
 import FilterDatePicker from '../FilterDatePicker';
 import { statusOptions } from './utils';
-import { getCurrentUser } from '../../utils/auth';
+import { useAuth } from '../../contexts/AuthContext';
 import { getCountries } from '../../utils/codeTable';
 import SearchableDropdown from '../SearchableDropdown';
 
@@ -35,14 +35,22 @@ const CasesFilter: React.FC<CasesFilterProps> = ({
   onToggleFilters,
   onQuickFilter
 }) => {
-  const currentUser = getCurrentUser();
+  const { user: currentUser } = useAuth();
   const [availableCountries, setAvailableCountries] = useState<string[]>([]);
 
   // Load countries from Global-Table
   useEffect(() => {
-    const globalCountries = getCountries();
-    const countries = globalCountries.length > 0 ? globalCountries : [...COUNTRIES];
-    setAvailableCountries(countries);
+    const loadCountries = async () => {
+      try {
+        const globalCountries = await getCountries();
+        const countries = globalCountries.length > 0 ? globalCountries : [...COUNTRIES];
+        setAvailableCountries(countries);
+      } catch (error) {
+        console.error('Error loading countries:', error);
+        setAvailableCountries([...COUNTRIES]);
+      }
+    };
+    loadCountries();
   }, []);
 
   return (

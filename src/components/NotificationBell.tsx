@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from '
 import { useNotifications } from '../contexts/NotificationContext';
 import { useSound } from '../contexts/SoundContext';
 import { formatDate } from '../utils/dateFormat';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 import NotificationSettings from './NotificationSettings';
 import './NotificationSettings.css';
 
@@ -14,7 +14,7 @@ const NotificationBell: React.FC = () => {
   const bellRef = useRef<HTMLDivElement>(null);
   
   // All users can access notification settings
-  const currentUser = getCurrentUser();
+  const { user: currentUser } = useAuth();
   const canViewNotifications = !!currentUser;
 
   // Close dropdown when clicking outside

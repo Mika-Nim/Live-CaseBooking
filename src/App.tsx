@@ -32,12 +32,23 @@ type ActivePage = 'booking' | 'cases' | 'process' | 'users' | 'sets' | 'reports'
 
 const AppContent: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
+  
+  // Debug authentication state
+  useEffect(() => {
+    console.log('🏠 App: Authentication state changed:', { 
+      isAuthenticated, 
+      hasUser: !!user, 
+      userId: user?.id,
+      userName: user?.name 
+    });
+  }, [isAuthenticated, user]);
   const [activePage, setActivePage] = useState<ActivePage>('booking');
   const [processingCase, setProcessingCase] = useState<CaseBooking | null>(null);
   const [showWelcomePopup, setShowWelcomePopup] = useState(false);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   const [adminPanelExpanded, setAdminPanelExpanded] = useState(false);
   const [highlightedCaseId, setHighlightedCaseId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const adminPanelRef = useRef<HTMLDivElement>(null);
   const { playSound } = useSound();
   const { addNotification } = useNotifications();
@@ -106,6 +117,7 @@ const AppContent: React.FC = () => {
 
   const handleCaseSubmitted = () => {
     setActivePage('cases');
+    setRefreshKey(prev => prev + 1); // Force refresh of case lists
     playSound.submit();
     showSuccess('Case Submitted!', 'Your case booking has been submitted successfully with a reference number.');
     addNotification({
@@ -366,6 +378,7 @@ const AppContent: React.FC = () => {
         
         {activePage === 'cases' && (
           <CasesList 
+            key={`cases-${refreshKey}`}
             onProcessCase={handleProcessCase} 
             currentUser={user} 
             highlightedCaseId={highlightedCaseId}
@@ -402,7 +415,7 @@ const AppContent: React.FC = () => {
         )}
         
         {activePage === 'calendar' && hasPermission(user.role, 'booking-calendar') && (
-          <BookingCalendar onCaseClick={handleCalendarCaseClick} />
+          <BookingCalendar key={`calendar-${refreshKey}`} onCaseClick={handleCalendarCaseClick} />
         )}
         
         {activePage === 'sets' && hasPermission(user.role, PERMISSION_ACTIONS.EDIT_SETS) && (

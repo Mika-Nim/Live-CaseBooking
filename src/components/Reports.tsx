@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { CaseBooking, CaseStatus, COUNTRIES, DEPARTMENTS } from '../types';
 import { getCountries } from '../utils/codeTable';
 import { getCases } from '../utils/storage';
-import { getCurrentUser } from '../utils/auth';
+import { useAuth } from '../contexts/AuthContext';
 import { hasPermission, PERMISSION_ACTIONS } from '../utils/permissions';
 import { getStatusColor } from './CasesList/utils';
 import { formatDate } from '../utils/dateFormat';
@@ -35,7 +35,7 @@ interface ReportData {
 const Reports: React.FC = () => {
   const [cases, setCases] = useState<CaseBooking[]>([]);
   const [filteredCases, setFilteredCases] = useState<CaseBooking[]>([]);
-  const [currentUser] = useState(getCurrentUser());
+  const { user: currentUser } = useAuth();
   const [showFilters, setShowFilters] = useState(true);
   const [globalCountries, setGlobalCountries] = useState<string[]>([]);
   const [filters, setFilters] = useState<ReportFilters>({
@@ -59,8 +59,16 @@ const Reports: React.FC = () => {
 
   // Load countries from Global-Table
   useEffect(() => {
-    const countries = getCountries();
-    setGlobalCountries(countries.length > 0 ? countries : [...COUNTRIES]);
+    const loadCountries = async () => {
+      try {
+        const countries = await getCountries();
+        setGlobalCountries(countries.length > 0 ? countries : [...COUNTRIES]);
+      } catch (error) {
+        console.error('Error loading countries:', error);
+        setGlobalCountries([...COUNTRIES]);
+      }
+    };
+    loadCountries();
   }, []);
 
   // Load cases on component mount
